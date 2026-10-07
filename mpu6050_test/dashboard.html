@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPU-6050 Dashboard</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:#0f1923;color:#e0e0e0;
+    display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;padding:20px
+  }
+  h1{font-size:28px;margin-bottom:5px;color:#00e5ff}
+  .sub{color:#78909c;font-size:13px;margin-bottom:24px}
+
+  #connectBtn,#serialBtn{
+    background:#00c853;color:#000;border:none;
+    padding:14px 38px;font-size:17px;font-weight:700;
+    border-radius:8px;cursor:pointer
+  }
+  #connectBtn:hover,#serialBtn:hover{background:#00e676}
+  #connectBtn:disabled,#serialBtn:disabled{background:#455a64;color:#78909c;cursor:not-allowed}
+  #connectBtn.connected,#serialBtn.connected{background:#ff1744;color:#fff}
+  #connectBtn.connected:hover,#serialBtn.connected:hover{background:#ff5252}
+  .btnrow{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
+  #status{margin-top:12px;font-size:14px;color:#78909c;max-width:600px;text-align:center;line-height:1.5}
+
+  /* Always visible: hiding the whole dashboard until a BLE connection
+     succeeded left the page almost entirely blank, which looked broken. */
+  .dashboard{display:block;width:100%;max-width:1240px;margin-top:16px;opacity:.45;filter:saturate(.4);transition:opacity .25s ease}
+  .dashboard.active{opacity:1;filter:none}
+
+  .row{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-bottom:18px;
+       align-items:flex-start}
+  .card{
+    background:linear-gradient(160deg,#1c2d3c 0%,#182634 100%);
+    border:1px solid rgba(120,160,200,.10);
+    border-radius:14px;
+    padding:20px;flex:1;min-width:200px;
+    box-shadow:0 6px 22px rgba(0,0,0,.34)
+  }
+  .card h2{
+    font-size:13px;text-transform:uppercase;letter-spacing:1px;
+    color:#546e7a;margin-bottom:12px;text-align:center
+  }
+
+  .bar-group{margin-bottom:6px}
+  .bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
+  .bar-label span:last-child{color:#00e5ff;font-weight:600}
+  .bar-track{background:#263238;height:10px;border-radius:5px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:5px;transition:width .12s}
+  .bar-ax{background:#ff5252}.bar-ay{background:#69f0ae}.bar-az{background:#448aff}
+  .bar-gx{background:#ffab40}.bar-gy{background:#e040fb}.bar-gz{background:#40c4ff}
+
+  .ble-indicator{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+  .ble-on{background:#00c853;box-shadow:0 0 8px #00c853}
+  .ble-off{background:#ff1744}
+
+  .axis-hint{font-size:10px;color:#455a64;text-align:center;margin-top:5px}
+  /* Both canvases get their drawing buffer from fitRendererToCanvas() /
+     drawGyroChart(), so these rules only define the CSS box. An explicit
+     responsive height is used rather than aspect-ratio because
+     `width:100% + aspect-ratio` derives a height that max-height cannot
+     override, which left large empty wells under the graphics. */
+  .card canvas{display:block;margin:0 auto;width:100%;max-width:100%}
+  #cubeCanvas{height:clamp(220px, 30vh, 340px);touch-action:none}
+  #gyroCanvas{height:clamp(120px, 15vh, 170px);touch-action:none}
+
+  canvas{display:block;margin:0 auto}
+
+  .error-box{
+    background:#3e1a1a;border:1px solid #ff5252;border-radius:8px;
+    padding:16px 20px;margin:16px 0;max-width:600px;text-align:left;
+    font-size:13px;line-height:1.6
+  }
+  .error-box code{
+    background:#1a0a0a;color:#ff8a80;padding:2px 6px;border-radius:3px;
+    font-size:12px
+  }
+  .error-box p{margin:8px 0}
+  .error-box p:first-child{margin-top:0}
+
+  /* ── Detected-pattern pills ─────────────────────────────── */
+  .pat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+            gap:12px;margin:14px 0 10px}
+  .pat{background:#0d1622;border:1px solid #1d2b3a;border-radius:10px;
+       padding:9px 11px;transition:background .18s,border-color .18s,box-shadow .18s}
+  .pat-name{font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:#5d7a8c}
+  .pat-state{font-size:21px;font-weight:600;letter-spacing:1.5px;color:#3d4b5c;
+             margin:2px 0 3px;transition:color .15s}
+  .pat-sub{font-size:10px;color:#4a5a6b;font-variant-numeric:tabular-nums;line-height:1.35}
+  .pat.on{background:#0d2620;border-color:#00e676;box-shadow:0 0 14px rgba(0,230,118,.18)}
+  .pat.on .pat-state{color:#00e676}
+  .pat.hot{background:#2a1113;border-color:#ff5252;box-shadow:0 0 16px rgba(255,82,82,.30)}
+  .pat.hot .pat-state{color:#ff5252}
+  .pat.signal{border-color:#00b8d4}
+  .pat.signal .pat-state{color:#00e5ff;font-size:15px;letter-spacing:.5px}
+  .signal-row{display:flex;gap:22px;flex-wrap:wrap;font-size:11px;color:#5d7a8c;
+              margin:2px 0 4px;font-variant-numeric:tabular-nums}
+  .signal-row b{color:#cfe6f5;font-weight:600}
+  .event-log{margin-top:10px;padding:9px 11px;background:#0a1017;border:1px solid #16222f;
+             border-radius:8px;font-size:10.5px;line-height:1.65;color:#5d7a8c;
+             font-family:ui-monospace,Menlo,monospace;max-height:96px;overflow:hidden}
+  .event-log .ev{color:#8fb4cc}
+  .event-log .ev.hit{color:#ff8a80}
+</style>
+</head>
+<body>
+
+<h1>MPU-6050 Live Dashboard</h1>
+<div class="sub">Web Bluetooth <i>or</i> USB Serial &nbsp;&bull;&nbsp; Three.js 3D &nbsp;&bull;&nbsp; Madgwick on ESP32</div>
+
+<div class="btnrow">
+  <button id="connectBtn" disabled>Checking browser support...</button>
+  <button id="serialBtn" disabled>Checking...</button>
+</div>
+<div id="status">Initializing...</div>
+<div id="errors"></div>
+
+<div class="dashboard" id="dashboard">
+
+  <div class="row">
+    <div class="card" style="flex:0 0 170px">
+      <h2>Temperature</h2>
+      <div style="font-size:42px;font-weight:300;text-align:center;color:#00e5ff" id="tempVal">--</div>
+      <div style="text-align:center;font-size:11px;color:#546e7a">C</div>
+    </div>
+    <div class="card" style="flex:1;min-width:280px">
+      <h2>Connection</h2>
+      <div style="text-align:center;font-size:22px;margin-top:10px">
+        <span class="ble-indicator ble-off" id="bleDot"></span>
+        <span id="bleState">Disconnected</span>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#546e7a;margin-top:6px">
+        Madgwick AHRS on ESP32 @ 200 Hz &bull; BLE stream @ 33 Hz
+        <br><span id="packetInfo" style="color:#455a64">Waiting for data...</span>
+        <br><span id="i2cDiag" style="color:#78909c"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card" style="flex:2;min-width:320px">
+      <h2>3D Orientation &nbsp;(quaternion from ESP32, no JS fusion)</h2>
+      <canvas id="cubeCanvas" style="cursor:grab"></canvas>
+      <div class="axis-hint">Drag to orbit &nbsp;|&nbsp; Scroll to zoom &nbsp;|&nbsp; Red=Right(+X) &nbsp; Green=Up(+Y) &nbsp; Blue=Forward(+Z)</div>
+      <div style="display:flex;justify-content:space-around;margin-top:12px;font-size:13px;color:#90a4ae">
+        <div>Roll <b style="color:#ff5252" id="eulerRoll">0.0</b></div>
+        <div>Pitch <b style="color:#69f0ae" id="eulerPitch">0.0</b></div>
+        <div>Yaw <b style="color:#448aff" id="eulerYaw">0.0</b></div>
+      </div>
+    </div>
+    <div class="card" style="flex:1;min-width:240px">
+      <h2>Accelerometer (g)</h2>
+      <div class="bar-group">
+        <div class="bar-label"><span>X</span><span id="axVal">0.000</span></div>
+        <div class="bar-track"><div class="bar-fill bar-ax" id="axBar" style="width:50%"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>Y</span><span id="ayVal">0.000</span></div>
+        <div class="bar-track"><div class="bar-fill bar-ay" id="ayBar" style="width:50%"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>Z</span><span id="azVal">0.000</span></div>
+        <div class="bar-track"><div class="bar-fill bar-az" id="azBar" style="width:50%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card" style="flex:2;min-width:320px">
+      <h2>Gyroscope (/s) &nbsp;&mdash;&nbsp; Rotation Rate</h2>
+      <canvas id="gyroCanvas"></canvas>
+    </div>
+    <div class="card" style="flex:1;min-width:240px">
+      <h2>Gyroscope Values</h2>
+      <div class="bar-group">
+        <div class="bar-label"><span>X</span><span id="gxVal">0.0</span></div>
+        <div class="bar-track"><div class="bar-fill bar-gx" id="gxBar" style="width:50%"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>Y</span><span id="gyVal">0.0</span></div>
+        <div class="bar-track"><div class="bar-fill bar-gy" id="gyBar" style="width:50%"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>Z</span><span id="gzVal">0.0</span></div>
+        <div class="bar-track"><div class="bar-fill bar-gz" id="gzBar" style="width:50%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card" style="flex:1;min-width:520px">
+      <h2>Detected Patterns &mdash; 200 Hz on the ESP32</h2>
+      <div class="signal-row">
+        <span>|a| <b id="sigAMag">--</b> g</span>
+        <span>jerk <b id="sigJerk">--</b> g/s</span>
+        <span>last impact <b id="sigImpact">--</b> g</span>
+        <span>sway <b id="sigSway">--</b> Hz</span>
+      </div>
+      <div class="pat-grid">
+        <div class="pat" id="patFreefall"><div class="pat-name">Free fall</div><div class="pat-state">NO</div><div class="pat-sub" id="subFreefall">&mdash;</div></div>
+        <div class="pat" id="patDrop"><div class="pat-name">Drop</div><div class="pat-state">NO</div><div class="pat-sub" id="subDrop">0</div></div>
+        <div class="pat" id="patImpact"><div class="pat-name">Impact / hit</div><div class="pat-state">NO</div><div class="pat-sub" id="subImpact">0</div></div>
+        <div class="pat" id="patTap"><div class="pat-name">Tap</div><div class="pat-state">NO</div><div class="pat-sub" id="subTap">0</div></div>
+        <div class="pat" id="patSway"><div class="pat-name">Sway</div><div class="pat-state">NO</div><div class="pat-sub" id="subSway">0</div></div>
+        <div class="pat" id="patShake"><div class="pat-name">Shake</div><div class="pat-state">NO</div><div class="pat-sub" id="subShake">0</div></div>
+        <div class="pat" id="patStill"><div class="pat-name">At rest</div><div class="pat-state">NO</div><div class="pat-sub" id="subStill">&mdash;</div></div>
+        <div class="pat" id="patOrient"><div class="pat-name">Orientation</div><div class="pat-state" id="orientState">&mdash;</div><div class="pat-sub" id="subOrient">&mdash;</div></div>
+      </div>
+      <div class="event-log" id="eventLog">No events yet &mdash; drop, tap or shake the sensor.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Three.js is vendored in ./vendor/three.min.js so this page works with
+  // no internet connection.  If that copy is missing, fall back to the CDN.
+  window.__threeFallbackTried = false;
+  window.loadThreeFromCDN = function () {
+    if (window.__threeFallbackTried) return;
+    window.__threeFallbackTried = true;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';
+    s.onerror = function () {
+      if (window.onThreeJSLoadError) window.onThreeJSLoadError();
+    };
+    document.head.appendChild(s);
+  };
+</script>
+<script src="vendor/three.min.js" onerror="loadThreeFromCDN()"></script>
+<script>
+(function() {
+
+var threeJSReady = false;
+var threeJSError = null;
+
+window.onThreeJSLoadError = function() {
+  threeJSError = 'Three.js could not be loaded (neither ./vendor/three.min.js nor the CDN).';
+  checkReadiness();
+};
+
+window.checkReadiness = function() {
+  if (typeof THREE !== 'undefined') threeJSReady = true;
+
+  // Three.js comes from a CDN and may finish loading long after this
+  // script runs, so wire up the canvases the moment it appears.
+  initVisuals();
+
+  var errors = document.getElementById('errors');
+  var issues = [];
+
+  var isSecure = window.isSecureContext;
+
+  if (!isSecure) {
+    issues.push(
+      '<p><b>This page needs a secure context</b> (HTTPS or localhost) for both ' +
+      'Web Bluetooth and Web Serial.</p>' +
+      '<p>You opened this file directly from disk (<code>file://</code>). Chrome ' +
+      '<i>usually</i> still allows it, but permissions are not remembered and ' +
+      'behaviour varies by version — a local server is the reliable option.</p>' +
+      '<p><b>Fix:</b> Serve it with a local web server:</p>' +
+      '<p><code>cd "' + window.location.href.replace(/\/dashboard\.html.*$/, '').replace(/^file:\/\//, '') + '" &amp;&amp; python3 -m http.server 8080</code></p>' +
+      '<p>Then open: <code>http://localhost:8080/dashboard.html</code></p>'
+    );
+  } else if (!bleUsable() && !serialUsable()) {
+    issues.push('<p><b>Neither Web Bluetooth nor Web Serial is available</b> in this browser.</p>' +
+      '<p>Use Chrome, Edge or Opera on desktop. Safari and Firefox support neither.</p>' +
+      '<p>Web Bluetooth also works on Chrome for Android; Web Serial is desktop-only.</p>');
+  } else if (!bleUsable()) {
+    issues.push('<p>Web Bluetooth is unavailable in this browser, but <b>Web Serial works</b> — ' +
+      'plug the board into USB and use the “Connect USB” button.</p>');
+  } else if (!serialUsable()) {
+    issues.push('<p>Web Serial is unavailable in this browser, but <b>Web Bluetooth works</b> — ' +
+      'use the “Connect Bluetooth” button.</p>');
+  }
+
+  if (!threeJSReady && !threeJSError) {
+    issues.push('<p>Waiting for Three.js to load...</p>');
+  } else if (threeJSError) {
+    issues.push('<p><b>' + threeJSError + '</b></p>' +
+      '<p>The numeric readouts still work without it; only the 3D views stay blank.</p>');
+  }
+
+  if (issues.length > 0) {
+    errors.innerHTML = '<div class="error-box">' + issues.join('') + '</div>';
+  } else {
+    errors.innerHTML = '';
+  }
+
+  return issues.length === 0;
+};
+
+function initWhenReady() {
+  // Paint the error box (and latch Three.js in) on every tick.
+  checkReadiness();
+
+  var isSecure = window.isSecureContext;
+  var bleOk    = bleUsable();
+  var serOk    = serialUsable();
+  var btn      = document.getElementById('connectBtn');
+  var sbtn     = document.getElementById('serialBtn');
+
+  // Enable each button as soon as ITS OWN transport is usable. Also
+  // requiring Three.js meant a slow or blocked CDN froze the page at
+  // "Checking browser support..." forever, with no way to tell why.
+  if (bleOk) {
+    if (btn.disabled) {
+      btn.disabled    = false;
+      btn.textContent = 'Connect Bluetooth';
+      btn.onclick     = toggleBLE;
+    }
+  } else {
+    btn.disabled    = true;
+    btn.textContent = isSecure
+      ? 'Bluetooth not supported here'
+      : 'Bluetooth needs http://localhost';
+  }
+
+  if (serOk) {
+    if (sbtn.disabled) {
+      sbtn.disabled    = false;
+      sbtn.textContent = 'Connect USB';
+      sbtn.onclick     = toggleSerial;
+    }
+  } else {
+    sbtn.disabled    = true;
+    sbtn.textContent = isSecure
+      ? 'USB serial not supported here'
+      : 'USB needs http://localhost';
+  }
+
+  if ((bleOk || serOk) && rxLines === 0 && !activeLink) {
+    document.getElementById('status').textContent = serOk
+      ? 'Ready — plug in the board and click “Connect USB” (most reliable), ' +
+        'or click “Connect Bluetooth”. Hold the sensor still and flat while it calibrates (~5 s).'
+      : 'Ready to connect — hold the sensor still and flat while it calibrates (~5 s)';
+    return;
+  }
+
+  if (!bleOk && !serOk) setTimeout(initWhenReady, 500);
+}
+
+// ── One-shot visual initialisation, safe to call repeatedly ──
+var visualsReady = false;
+function initVisuals() {
+  if (visualsReady) return;
+  if (typeof THREE === 'undefined') return;
+  visualsReady = true;
+  threeJSReady = true;
+  try {
+    initThreeJS();
+    draw3DCube();
+    drawGyroChart();
+  } catch (e) {
+    console.error('initVisuals:', e);
+  }
+}
+
+// ── "Connected but silent" watchdog ────────────────────────
+// The most confusing failure mode is a connection that succeeds and then
+// delivers nothing. Say so explicitly instead of just showing zeros.
+setInterval(function() {
+  var linked = (device && device.gatt && device.gatt.connected) || serialOpen;
+  if (!linked) return;
+  var st = document.getElementById('status');
+  if (!st) return;
+  if (rxLines === 0) {
+    st.textContent = 'Connected, but no data lines received yet — if this ' +
+      'persists the sensor is not answering (see the I²C note above).';
+  }
+}, 1500);
+
+// ─────────────────────────────────────────────────────────
+//  BLE  — Nordic UART Service
+// ─────────────────────────────────────────────────────────
+var SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+var CHAR_TX_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+var device = null, server = null, txChar = null;
+
+// Sensor values (received from ESP32)
+var qw = 1, qx = 0, qy = 0, qz = 0;
+var ax = 0, ay = 0, az = 0;
+var gx = 0, gy = 0, gz = 0;
+var tempC = 0;
+var sensorOk = 0;
+var lastPacketCount = -1;
+// The firmware emits one line per 1/BLE_HZ, so its packet counter is the only
+// trustworthy clock on this side of the link -- see the dt computation below.
+var STREAM_HZ = 33.0;
+var streamDt = 1 / 33.0;
+var droppedPackets = 0;
+// Set when new data arrives, cleared by the render loop. Data arrival and
+// painting are deliberately decoupled; see renderLoop() at the end of file.
+var renderDirty = true;
+var roll = 0, pitch = 0, yaw = 0;
+
+// ── Detector results streamed from the ESP32 (fields 17-27) ───────────
+var hasDetector = false;
+var aMag = 1, jerk = 0, evFlags = 0, impactG = 0;
+var fwSwayHz = 0, fwSwayRms = 0;
+var cntImpact = 0, cntDrop = 0, cntSway = 0, cntShake = 0, cntTap = 0;
+// Wall-clock stamps of the last transient event, used to hold the pill lit
+// long enough for a human to see a 5 ms impact.
+var evAt = { drop: -1e9, impact: -1e9, tap: -1e9, freefall: -1e9, sway: -1e9, shake: -1e9 };
+var eventLines = [];
+
+function logEvent(text, isHit) {
+  var d = new Date();
+  var ts = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2) +
+           ':' + ('0'+d.getSeconds()).slice(-2) + '.' +
+           ('00'+d.getMilliseconds()).slice(-3);
+  eventLines.unshift({ ts: ts, text: text, hit: !!isHit });
+  if (eventLines.length > 8) eventLines.pop();
+
+  var el = document.getElementById('eventLog');
+  if (!el) return;
+  var html = '';
+  for (var i = 0; i < eventLines.length; i++) {
+    var e = eventLines[i];
+    html += '<div class="ev' + (e.hit ? ' hit' : '') + '">' + e.ts + '&nbsp;&nbsp;' + e.text + '</div>';
+  }
+  el.innerHTML = html;
+}
+
+async function toggleBLE() {
+  var s = document.getElementById('status');
+  if (device && device.gatt && device.gatt.connected) {
+    s.textContent = 'Disconnecting Bluetooth...';
+    device.gatt.disconnect();
+    return;
+  }
+
+  try {
+    s.textContent = 'Scanning for BLE devices...';
+    device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { name: 'MPU6050-Test' },
+        { namePrefix: 'MPU6050' }
+      ],
+      optionalServices: [SERVICE_UUID]
+    });
+
+    s.textContent = 'Connecting to ' + (device.name || 'device') + '...';
+    server = await device.gatt.connect();
+    var svc = await server.getPrimaryService(SERVICE_UUID);
+    txChar = await svc.getCharacteristic(CHAR_TX_UUID);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged', onData);
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+    activeLink = 'ble';
+    updateUI(true, 'Bluetooth');
+    s.textContent = 'Connected over Bluetooth — receiving quaternion from ESP32';
+  } catch(e) {
+    s.textContent = 'Bluetooth connection failed: ' + e.message;
+    console.error('BLE error:', e);
+  }
+}
+
+function onDisconnect() {
+  activeLink = null;
+  updateUI(false);
+  document.getElementById('status').textContent = 'Disconnected. Click a Connect button to try again.';
+}
+
+// One indicator, whichever transport is carrying the data.
+function updateUI(connected, linkLabel) {
+  var b = document.getElementById('connectBtn');
+  var sb = document.getElementById('serialBtn');
+  var d = document.getElementById('dashboard');
+
+  if (connected) {
+    d.classList.add('active');
+    document.getElementById('bleDot').className = 'ble-indicator ble-on';
+    document.getElementById('bleState').textContent = linkLabel || 'Connected';
+    if (linkLabel === 'USB Serial') {
+      sb.textContent = 'Disconnect USB';
+      sb.classList.add('connected');
+      b.disabled = true;
+    } else {
+      b.textContent = 'Disconnect Bluetooth';
+      b.classList.add('connected');
+      sb.disabled = true;
+    }
+  } else {
+    d.classList.remove('active');
+    document.getElementById('bleDot').className = 'ble-indicator ble-off';
+    document.getElementById('bleState').textContent = 'Disconnected';
+    b.textContent = 'Connect Bluetooth';
+    b.classList.remove('connected');
+    sb.textContent = 'Connect USB';
+    sb.classList.remove('connected');
+    b.disabled = !bleUsable();
+    sb.disabled = !serialUsable();
+  }
+}
+
+// ── Transport-agnostic line reassembly ────────────────────
+// A BLE notification carries at most (ATT MTU - 3) bytes.  With the
+// default ATT MTU of 23 that is just 20 bytes, while one CSV line is
+// ~85 bytes — so a line MUST arrive as several notifications.  The
+// firmware chunks long lines and terminates every line with '\n';
+// reassemble here and only parse complete lines.  USB Serial hands over
+// chunks split at arbitrary boundaries too, so both transports feed the
+// same buffer.
+var bleLineBuf = '';
+var rxLines = 0;
+
+function feedChunk(text) {
+  try {
+    bleLineBuf += text;
+
+    // Never let a lost terminator grow the buffer without bound.
+    if (bleLineBuf.length > 16384) bleLineBuf = bleLineBuf.slice(-4096);
+
+    var nl = bleLineBuf.lastIndexOf('\n');
+    if (nl === -1) {
+      // No terminator yet. Still tolerate a complete-looking CSV row so
+      // an older firmware that omitted '\n' keeps working.
+      if (bleLineBuf.split(',').length >= 16) {
+        var whole = bleLineBuf;
+        bleLineBuf = '';
+        handleLine(whole);
+      }
+      return;
+    }
+
+    var complete = bleLineBuf.slice(0, nl);
+    bleLineBuf = bleLineBuf.slice(nl + 1);
+
+    var lines = complete.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i].replace(/\r$/, '');
+      if (ln.length) { rxLines++; handleLine(ln); }
+    }
+  } catch(e) {
+    console.error('feedChunk error:', e);
+  }
+}
+
+function onData(event) {
+  feedChunk(new TextDecoder('utf-8').decode(event.target.value.buffer));
+}
+
+// ─────────────────────────────────────────────────────────
+//  USB Serial  — Web Serial API
+// ─────────────────────────────────────────────────────────
+// The ESP32-C3's native USB-Serial/JTAG peripheral carries the same CSV
+// stream the firmware sends over BLE (see emitLine() in src/main.cpp).
+// Web Serial has no ATT MTU, no GATT disconnects and no macOS Bluetooth
+// permission prompt, so it is the sturdier path when the board is
+// plugged in.  Chrome/Edge on desktop only.
+var serialPort   = null;
+var serialReader = null;
+var serialOpen   = false;
+
+function serialUsable() { return window.isSecureContext && !!navigator.serial; }
+function bleUsable()    { return window.isSecureContext && !!navigator.bluetooth; }
+var activeLink = null;   // 'ble' | 'serial' | null
+
+async function toggleSerial() {
+  var s = document.getElementById('status');
+
+  if (serialOpen) {
+    s.textContent = 'Closing USB serial...';
+    serialOpen = false;
+    try { if (serialReader) await serialReader.cancel(); } catch(e) {}
+    return;
+  }
+
+  try {
+    s.textContent = 'Choose the ESP32 serial port...';
+    serialPort = await navigator.serial.requestPort();
+
+    s.textContent = 'Opening serial port at 115200 baud...';
+    await serialPort.open({ baudRate: 115200, bufferSize: 4096, flowControl: 'none' });
+
+    serialOpen = true;
+    activeLink = 'serial';
+    updateUI(true, 'USB Serial');
+    s.textContent = 'Connected over USB — streaming CSV from ESP32';
+    readSerialLoop();
+  } catch(e) {
+    serialOpen = false;
+    activeLink = null;
+    s.textContent = 'Serial connection failed: ' + e.message;
+    console.error('Serial error:', e);
+  }
+}
+
+async function readSerialLoop() {
+  var dec = new TextDecoder('utf-8');
+  while (serialPort && serialPort.readable && serialOpen) {
+    serialReader = serialPort.readable.getReader();
+    try {
+      while (serialOpen) {
+        var r = await serialReader.read();
+        if (r.done) break;
+        if (r.value && r.value.length) feedChunk(dec.decode(r.value, {stream: true}));
+      }
+    } catch(e) {
+      if (serialOpen) console.error('Serial read error:', e);
+    } finally {
+      try { serialReader.releaseLock(); } catch(e) {}
+      serialReader = null;
+    }
+  }
+
+  // Port is finished — close it so the board can be re-flashed.
+  try { if (serialPort) await serialPort.close(); } catch(e) {}
+  serialPort = null;
+  serialOpen = false;
+  if (activeLink === 'serial') {
+    activeLink = null;
+    updateUI(false);
+    document.getElementById('status').textContent =
+      'USB serial closed. Click Connect USB to reopen.';
+  }
+}
+
+function handleLine(raw) {
+  try {
+    raw = raw.trim();
+    if (!raw) return;
+
+    // ── Diagnostic: I²C scan results ──────────────────────
+    if (raw.startsWith('SCAN:')) {
+      var scanCount = parseInt(raw.substring(5), 10);
+      var el = document.getElementById('i2cDiag');
+      if (el) {
+        if (scanCount === 0) {
+          el.innerHTML = '<b>I²C Scan: NO devices on bus!</b><br>' +
+            'The firmware already tried GPIO4/GPIO5 as SDA/SCL in <i>both</i> orders, so a swap is not the problem.<br>' +
+            'Check: MPU <b>VCC → 3V3</b>, <b>GND → GND</b>, and that SDA/SCL really land on GPIO4/GPIO5.<br>' +
+            'A genuine MPU-6050 still answers I²C while asleep, so a silent bus means wiring or power.';
+          el.style.color = '#ff5252';
+        } else {
+          el.innerHTML = '<b>I²C Scan:</b> Found ' + scanCount + ' device(s). Reading chip IDs...';
+          el.style.color = '#ffab40';
+        }
+      }
+      return;
+    }
+
+    if (raw.startsWith('SCANWHO:')) {
+      var el = document.getElementById('i2cDiag');
+      if (el) {
+        var whoVals = raw.substring(8).split(',');
+        el.innerHTML = '<b>I²C WHO_AM_I:</b> '
+          + whoVals.filter(function(h){return h!=='00'}).map(function(h){return '0x'+h}).join(', ')
+          + '<br>Checking against known chips...';
+        el.style.color = '#ffab40';
+      }
+      return;
+    }
+
+    if (raw.startsWith('SCANMATCH:')) {
+      var el = document.getElementById('i2cDiag');
+      if (el) {
+        var matches = raw.substring(10).split(',');
+        var chipNames = ['Unknown','MPU-6050/6000','MPU-6500','MPU-9250/9255','ICM-20602','ICM-20948','Unidentified clone'];
+        var results = [];
+        for (var i = 0; i < matches.length; i++) {
+          var m = parseInt(matches[i], 10);
+          if (m > 0 && m < chipNames.length) results.push(chipNames[m]);
+        }
+        if (results.length > 0) {
+          el.innerHTML = '<b>✓ Detected:</b> ' + results.join(', ') + '<br>Sensor data incoming...';
+          el.style.color = '#00c853';
+        } else {
+          el.innerHTML = '<b>⚠ Device ACK\'d but chip ID not recognized.</b><br>' +
+            'Check the WHO_AM_I value above against InvenSense datasheet.<br>' +
+            'Could be a clone with a different ID.';
+          el.style.color = '#ff5252';
+        }
+      }
+      return;
+    }
+
+    // ── Normal CSV data ────────────────────────────────────
+    if (raw.indexOf(',') === -1) return;
+    var parts = raw.split(',');
+    if (parts.length < 11) return;
+
+    qw = parseFloat(parts[0]);
+    qx = parseFloat(parts[1]);
+    qy = parseFloat(parts[2]);
+    qz = parseFloat(parts[3]);
+    ax = parseFloat(parts[4]);
+    ay = parseFloat(parts[5]);
+    az = parseFloat(parts[6]);
+    gx = parseFloat(parts[7]);
+    gy = parseFloat(parts[8]);
+    gz = parseFloat(parts[9]);
+    tempC = parseFloat(parts[10]);
+
+    if (isNaN(qw)) return;
+
+    if (parts.length >= 13) {
+      sensorOk = parseInt(parts[11], 10) || 0;
+      var pc = parseInt(parts[12], 10);
+      if (!isNaN(pc)) {
+        if (lastPacketCount >= 0 && pc > lastPacketCount) {
+          var missed = pc - lastPacketCount;
+          droppedPackets += missed - 1;
+          streamDt = missed / STREAM_HZ;
+        } else {
+          streamDt = 1 / STREAM_HZ;
+        }
+        lastPacketCount = pc;
+      }
+    }
+
+    if (parts.length >= 16) {
+      roll  = parseFloat(parts[13]);
+      pitch = parseFloat(parts[14]);
+      yaw   = parseFloat(parts[15]);
+    }
+
+    // ── Fields 17-27: the detector results appended by the firmware ──
+    // Appended rather than interleaved, so a board still running the old
+    // 16-field format parses fine and simply leaves the panel at "--".
+    if (parts.length >= 27) {
+      aMag     = parseFloat(parts[16]);
+      jerk     = parseFloat(parts[17]);
+      evFlags  = parseInt(parts[18], 10) || 0;
+      impactG  = parseFloat(parts[19]);
+      fwSwayHz = parseFloat(parts[20]);
+      fwSwayRms= parseFloat(parts[21]);
+      cntImpact= parseInt(parts[22], 10) || 0;
+      cntDrop  = parseInt(parts[23], 10) || 0;
+      cntSway  = parseInt(parts[24], 10) || 0;
+      cntShake = parseInt(parts[25], 10) || 0;
+      cntTap   = parseInt(parts[26], 10) || 0;
+      hasDetector = true;
+
+      // Live states (upper bits) vs transient events (lower byte).
+      var nowMs = performance.now();
+      if (evFlags & 0x0002) { evAt.drop   = nowMs; logEvent('DROP  (impact ' + impactG.toFixed(1) + ' g)', true); }
+      if (evFlags & 0x0004) { evAt.impact = nowMs; logEvent('IMPACT  ' + impactG.toFixed(1) + ' g', true); }
+      if (evFlags & 0x0008) { evAt.tap    = nowMs; logEvent('TAP', true); }
+      if (evFlags & 0x0001) { evAt.freefall = nowMs; logEvent('free fall', false); }
+      if (evFlags & 0x0010) { evAt.sway   = nowMs; logEvent('sway start', false); }
+      if (evFlags & 0x0020) { evAt.shake  = nowMs; logEvent('shake start', false); }
+
+      // Live state bit 9 = "at rest", straight from the ESP32's own 200 Hz
+      // verdict; updatePatterns() reads it directly off evFlags.
+    }
+
+    renderDirty = true;           // the rAF loop paints; we just set the flag
+  } catch(e) {
+    console.error('handleLine error:', e);
+  }
+}
+
+var cubeScene, cubeCamera, cubeRenderer, cubeMesh, cubeGroup;
+var orbTheta = -0.7, orbPhi = 0.7, orbDist = 2.8;
+var orbDragging = false, orbPrevMX = 0, orbPrevMY = 0;
+
+// Match a renderer's drawing buffer to the canvas's CSS box. Without this the
+// buffer keeps whatever size it was given at init while CSS stretches it, so
+// the 3D view renders blurry and the aspect ratio drifts.
+function fitRendererToCanvas(renderer, canvas, camera) {
+  var r = canvas.getBoundingClientRect();
+  var w = Math.max(1, Math.round(r.width));
+  var h = Math.max(1, Math.round(r.height));
+  if (canvas.clientWidth !== canvas._fitW || canvas.clientHeight !== canvas._fitH) {
+    canvas._fitW = canvas.clientWidth;
+    canvas._fitH = canvas.clientHeight;
+    renderer.setSize(w, h, false);   // false: don't touch the CSS size
+    if (camera) {
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+  }
+}
+
+function initThreeJS() {
+  var canvas = document.getElementById('cubeCanvas');
+  if (!canvas) return;
+
+  cubeScene = new THREE.Scene();
+
+  cubeCamera = new THREE.PerspectiveCamera(35, 4 / 3, 0.1, 15);
+  cubeRenderer = new THREE.WebGLRenderer({
+    canvas: canvas, alpha: true, antialias: true, powerPreference: 'high-performance'
+  });
+  // Cap the pixel ratio: at 2x on a large card this is ~4x the fragments for
+  // no visible benefit, and it is the main cost in the render loop.
+  cubeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  fitRendererToCanvas(cubeRenderer, canvas, cubeCamera);
+
+  // ── Create cube with proper face colors ───────────────
+  cubeGroup = new THREE.Group();
+  var geo = new THREE.BoxGeometry(1, 1, 1);
+  var mats = [
+    new THREE.MeshPhongMaterial({ color: 0xff5252 }),  // +X  red
+    new THREE.MeshPhongMaterial({ color: 0xcc4444 }),  // -X  dark red
+    new THREE.MeshPhongMaterial({ color: 0x69f0ae }),  // +Y  green
+    new THREE.MeshPhongMaterial({ color: 0x44aa66 }),  // -Y  dark green
+    new THREE.MeshPhongMaterial({ color: 0x448aff }),  // +Z  blue
+    new THREE.MeshPhongMaterial({ color: 0x3366cc }),  // -Z  dark blue
+  ];
+  cubeMesh = new THREE.Mesh(geo, mats);
+  cubeGroup.add(cubeMesh);
+
+  // ── Reference grid (flat plane under the cube) ───────
+  var grid = new THREE.GridHelper(3, 20, 0x334455, 0x1a2836);
+  cubeScene.add(grid);
+
+  // ── Axis arrows (world axes) ─────────────────────────
+  cubeScene.add(new THREE.AxesHelper(1.5));
+
+  // ── Lighting ─────────────────────────────────────────
+  cubeScene.add(new THREE.AmbientLight(0x8899bb, 0.5));
+  var key = new THREE.DirectionalLight(0xffffff, 0.8);
+  key.position.set(5, 8, 5);
+  cubeScene.add(key);
+  var fill = new THREE.DirectionalLight(0x8899cc, 0.3);
+  fill.position.set(-3, 1, -3);
+  cubeScene.add(fill);
+
+  cubeScene.add(cubeGroup);
+
+  // ── Orbit: mouse drag + scroll + touch ──────────────
+  canvas.addEventListener('mousedown', function(e) {
+    orbDragging = true;
+    orbPrevMX = e.clientX;
+    orbPrevMY = e.clientY;
+    canvas.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mouseup', function() {
+    orbDragging = false;
+    canvas.style.cursor = 'grab';
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!orbDragging) return;
+    var dx = e.clientX - orbPrevMX;
+    var dy = e.clientY - orbPrevMY;
+    orbTheta -= dx * 0.008;
+    orbPhi   += dy * 0.008;
+    orbPhi    = Math.max(-1.5, Math.min(1.5, orbPhi));
+    orbPrevMX = e.clientX;
+    orbPrevMY = e.clientY;
+  });
+  canvas.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    orbDist += e.deltaY * 0.005;
+    orbDist  = Math.max(1.0, Math.min(8.0, orbDist));
+  }, { passive: false });
+
+  canvas.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      orbDragging = true;
+      orbPrevMX = e.touches[0].clientX;
+      orbPrevMY = e.touches[0].clientY;
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    if (!orbDragging || e.touches.length !== 1) return;
+    var dx = e.touches[0].clientX - orbPrevMX;
+    var dy = e.touches[0].clientY - orbPrevMY;
+    orbTheta -= dx * 0.008;
+    orbPhi   += dy * 0.008;
+    orbPhi    = Math.max(-1.5, Math.min(1.5, orbPhi));
+    orbPrevMX = e.touches[0].clientX;
+    orbPrevMY = e.touches[0].clientY;
+  }, { passive: false });
+  canvas.addEventListener('touchend', function() {
+    orbDragging = false;
+  });
+
+  updateCamera();
+  cubeRenderer.render(cubeScene, cubeCamera);
+}
+
+function updateCamera() {
+  var x = orbDist * Math.cos(orbPhi) * Math.sin(orbTheta);
+  var y = orbDist * Math.sin(orbPhi);
+  var z = orbDist * Math.cos(orbPhi) * Math.cos(orbTheta);
+  cubeCamera.position.set(x, y, z);
+  cubeCamera.lookAt(0, 0, 0);
+}
+
+function draw3DCube() {
+  if (!cubeMesh) return;
+  try {
+    // ── Quaternion axis swizzle ─────────────────────────
+    //  Madgwick outputs [qw, qx, qy, qz] in NED frame:
+    //    qx = rotation about NED X (North / sensor forward)
+    //    qy = rotation about NED Y (East  / sensor right)
+    //    qz = rotation about NED Z (Down  / sensor up)
+    //
+    //  Cube axes: X=right, Y=up, Z=forward
+    //  Map: NED X→cube Z, NED Y→cube X, NED Z→cube Y
+    //
+    //  Result: q_cube = [qw, qy, qz, qx]
+    //  When sensor is flat → identity → green up, blue forward
+    cubeMesh.quaternion.set(qy, qz, qx, qw);
+
+    updateCamera();
+    cubeRenderer.render(cubeScene, cubeCamera);
+  } catch(e) { console.error('draw3DCube:', e); }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Gyro Chart  (Canvas 2D line chart)
+// ─────────────────────────────────────────────────────────
+var gyroHistory = [];
+for (var gi = 0; gi < 80; gi++) gyroHistory.push({ x: 0, y: 0, z: 0 });
+
+var GYRO_WINDOW = 80;          // samples shown
+var gyroAutoScale = true;      // rescale the y axis to the data
+var gyroCtx = null;
+
+function drawGyroChart() {
+  // Sample the history once per painted frame, not once per data line: the
+  // firmware already streams at 33 Hz, so pushing per line made the trace
+  // scroll three times faster than the x axis claimed.
+  gyroHistory.push({ x: gx, y: gy, z: gz });
+  while (gyroHistory.length > GYRO_WINDOW) gyroHistory.shift();
+
+  var c = document.getElementById('gyroCanvas');
+  if (!c) return;
+
+  // Size the backing store to the CSS box x devicePixelRatio, then work in
+  // CSS pixels so strokes stay crisp on retina and never look soft.
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var cssW = Math.max(1, Math.round(c.getBoundingClientRect().width));
+  var cssH = Math.max(1, Math.round(c.getBoundingClientRect().height));
+  var bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+  if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+  if (!gyroCtx) gyroCtx = c.getContext('2d');
+  var ctx = gyroCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);      // draw in CSS pixels
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  var w = cssW, h = cssH;
+  var ml = 42, mr = 14, mt = 26, mb = 22;
+  var pw = Math.max(1, w - ml - mr), ph = Math.max(1, h - mt - mb);
+
+  // Y range: fixed +/-250 unless auto-scale is on and the signal is smaller.
+  var maxv = 250, span = '\u00b1250';
+  if (gyroAutoScale) {
+    var peak = 0;
+    for (var i = 0; i < gyroHistory.length; i++) {
+      var s = gyroHistory[i];
+      peak = Math.max(peak, Math.abs(s.x), Math.abs(s.y), Math.abs(s.z));
+    }
+    var step = peak <= 2 ? 1 : peak <= 5 ? 2 : peak <= 10 ? 5
+             : peak <= 25 ? 10 : peak <= 50 ? 25 : peak <= 100 ? 50
+             : peak <= 250 ? 100 : 500;
+    maxv = Math.max(step, Math.ceil(peak * 1.15 / step) * step);
+    span = '\u00b1' + maxv;
+  }
+
+  function yOf(v) { return mt + ((maxv - v) / (2 * maxv)) * ph; }
+  function xOf(i) { return ml + (i / Math.max(1, GYRO_WINDOW - 1)) * pw; }
+
+  // Zero line, brighter than the grid
+  ctx.strokeStyle = '#2f4257';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ml, yOf(0));
+  ctx.lineTo(ml + pw, yOf(0));
+  ctx.stroke();
+
+  // Grid
+  ctx.strokeStyle = '#1e2c3a';
+  for (var g = 0; g <= 4; g++) {
+    var vv = -maxv + (g / 4) * 2 * maxv;
+    var yy = yOf(vv);
+    ctx.beginPath();
+    ctx.moveTo(ml, yy);
+    ctx.lineTo(ml + pw, yy);
+    ctx.stroke();
+  }
+
+  ctx.font = '10px -apple-system,BlinkMacSystemFont,sans-serif';
+  ctx.fillStyle = '#5d7a8c';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(maxv), ml - 6, yOf(maxv));
+  ctx.fillText('0', ml - 6, yOf(0));
+  ctx.fillText(String(-maxv), ml - 6, yOf(-maxv));
+
+  // Traces
+  var series = [
+    { k: 'x', c: '#ffab40' },
+    { k: 'y', c: '#e040fb' },
+    { k: 'z', c: '#40c4ff' },
+  ];
+  ctx.lineWidth = 1.8;
+  ctx.lineJoin = 'round';
+  for (var si = 0; si < series.length; si++) {
+    var key = series[si].k;
+    ctx.beginPath();
+    ctx.strokeStyle = series[si].c;
+    for (var j = 0; j < gyroHistory.length; j++) {
+      var px = xOf(j), py = yOf(gyroHistory[j][key]);
+      if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // Legend, right-aligned inside the plot
+  var lgW = 34;
+  var lgX = ml + pw - series.length * lgW;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (var li = 0; li < series.length; li++) {
+    var lx = lgX + li * lgW;
+    ctx.fillStyle = series[li].c;
+    ctx.fillRect(lx, mt - 20, 9, 3);
+    ctx.fillStyle = '#7d94a6';
+    ctx.fillText('G' + series[li].k.toUpperCase(), lx + 12, mt - 18);
+  }
+
+  // X axis caption
+  ctx.fillStyle = '#455a64';
+  ctx.textAlign = 'center';
+  ctx.fillText('last ' + (GYRO_WINDOW / 33).toFixed(1) + ' s', ml + pw / 2, h - 7);
+}
+
+// ─────────────────────────────────────────────────────────
+//  Dashboard Update
+// ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+//  DETECTED PATTERNS PANEL
+//
+//  Two different things are shown and they must not be confused:
+//   * the transient EV_* bits are single-sample events.  A 5 ms impact
+//     would be invisible if the pill only lit for one frame, so each is
+//     held lit for a human-visible dwell time after it fires;
+//   * the live bits (running / at rest / swaying / shaking) come straight
+//     from the current sample and follow the state exactly.
+// ═══════════════════════════════════════════════════════
+function updatePatterns() {
+  var t = performance.now();
+
+  function pill(id, subId, state, sub, mode) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('on', 'hot', 'signal');
+    if (mode) el.classList.add(mode);
+    var st = el.querySelector('.pat-state');
+    if (st && state !== null) st.textContent = state;
+    if (sub !== null) {
+      var se = document.getElementById(subId);
+      if (se) se.textContent = sub;
+    }
+  }
+
+  if (!hasDetector) {
+    pill('patFreefall','subFreefall','--','no data',null);
+    pill('patDrop','subDrop','--','no data',null);
+    pill('patImpact','subImpact','--','no data',null);
+    pill('patTap','subTap','--','no data',null);
+    pill('patSway','subSway','--','no data',null);
+    pill('patShake','subShake','--','no data',null);
+    pill('patStill','subStill','--','no data',null);
+    pill('patOrient','subOrient','--','no data',null);
+    return;
+  }
+
+  var liveFreefall = (evFlags & 0x0100) !== 0;
+  var liveStill    = (evFlags & 0x0200) !== 0;
+  var liveSway     = (evFlags & 0x0400) !== 0;
+  var liveShake    = (evFlags & 0x0800) !== 0;
+
+  var agoDrop   = t - evAt.drop;
+  var agoImpact = t - evAt.impact;
+  var agoTap    = t - evAt.tap;
+  var agoFF     = t - evAt.freefall;
+
+  // ── Free fall ──────────────────────────────────────────────────────
+  var ffHot = liveFreefall || agoFF < 1200;
+  pill('patFreefall', 'subFreefall',
+       liveFreefall ? 'YES' : 'NO',
+       liveFreefall ? 'weightless now' : (agoFF < 1e8 ? 'seen ' + (agoFF/1000).toFixed(1) + ' s ago' : '--'),
+       ffHot ? 'hot' : null);
+
+  // ── Drop ───────────────────────────────────────────────────────────
+  pill('patDrop', 'subDrop',
+       agoDrop < 3000 ? 'YES' : 'NO',
+       cntDrop + (cntDrop === 1 ? ' event' : ' events'),
+       agoDrop < 3000 ? 'hot' : null);
+
+  // ── Impact / hit ───────────────────────────────────────────────────
+  var peak = (isNaN(impactG) || impactG < 0.01) ? 0 : impactG;
+  pill('patImpact', 'subImpact',
+       agoImpact < 1500 ? 'YES' : 'NO',
+       cntImpact + ' \u00b7 peak ' + peak.toFixed(1) + ' g',
+       agoImpact < 1500 ? 'hot' : null);
+
+  // ── Tap ────────────────────────────────────────────────────────────
+  pill('patTap', 'subTap',
+       agoTap < 900 ? 'YES' : 'NO',
+       cntTap + (cntTap === 1 ? ' event' : ' events'),
+       agoTap < 900 ? 'hot' : null);
+
+  // ── Sway ───────────────────────────────────────────────────────────
+  var swaySub = liveSway
+      ? fwSwayHz.toFixed(2) + ' Hz \u00b7 ' + (fwSwayRms * 1000).toFixed(0) + ' mg'
+      : cntSway + (cntSway === 1 ? ' event' : ' events');
+  pill('patSway', 'subSway', liveSway ? 'YES' : 'NO', swaySub, liveSway ? 'on' : null);
+
+  // ── Shake ──────────────────────────────────────────────────────────
+  pill('patShake', 'subShake',
+       liveShake ? 'YES' : 'NO',
+       cntShake + (cntShake === 1 ? ' event' : ' events'),
+       liveShake ? 'on' : null);
+
+  // ── At rest ────────────────────────────────────────────────────────
+  pill('patStill', 'subStill',
+       liveStill ? 'YES' : 'NO',
+       liveStill ? 'velocity zeroed' : 'moving',
+       liveStill ? 'signal' : null);
+
+  // ── Orientation ────────────────────────────────────────────────────
+  var orient, detal;
+  var ar = Math.abs(roll), ap = Math.abs(pitch);
+  if (ap > 135)                 orient = 'UPSIDE DOWN';
+  else if (ar < 20 && ap < 20)  orient = 'FLAT';
+  else if (ar > 70 || ap > 70)  orient = 'STEEP';
+  else                          orient = 'TILTED';
+  detal = 'R ' + roll.toFixed(0) + '\u00b0  P ' + pitch.toFixed(0) + '\u00b0';
+  pill('patOrient', 'subOrient', orient, detal, 'signal');
+
+  // ── Signal strip ───────────────────────────────────────────────────
+  var e;
+  e = document.getElementById('sigAMag');   if (e) e.textContent = aMag.toFixed(3);
+  e = document.getElementById('sigJerk');   if (e) e.textContent = jerk.toFixed(0);
+  e = document.getElementById('sigImpact'); if (e) e.textContent = peak.toFixed(1);
+  // Only advertise a sway frequency while sway is actually detected --
+  // otherwise the band-pass output is just noise zero-crossings and the
+  // number reads like a measurement when it is not one.
+  e = document.getElementById('sigSway');
+  if (e) e.textContent = liveSway ? fwSwayHz.toFixed(2) : '\u2014';
+}
+
+function updateDashboard() {
+  try {
+    function barAccel(v) { return ((v + 2) / 4) * 100; }
+    function barGyro(v) { return ((v + 250) / 500) * 100; }
+
+    var te = document.getElementById('tempVal');
+    if (te) te.textContent = tempC.toFixed(1);
+
+    var axEl = document.getElementById('axVal');
+    var ayEl = document.getElementById('ayVal');
+    var azEl = document.getElementById('azVal');
+    if (axEl) axEl.textContent = ax.toFixed(3);
+    if (ayEl) ayEl.textContent = ay.toFixed(3);
+    if (azEl) azEl.textContent = az.toFixed(3);
+
+    var gxEl = document.getElementById('gxVal');
+    var gyEl = document.getElementById('gyVal');
+    var gzEl = document.getElementById('gzVal');
+    if (gxEl) gxEl.textContent = gx.toFixed(1);
+    if (gyEl) gyEl.textContent = gy.toFixed(1);
+    if (gzEl) gzEl.textContent = gz.toFixed(1);
+
+    var axB = document.getElementById('axBar');
+    var ayB = document.getElementById('ayBar');
+    var azB = document.getElementById('azBar');
+    if (axB) axB.style.width = barAccel(ax) + '%';
+    if (ayB) ayB.style.width = barAccel(ay) + '%';
+    if (azB) azB.style.width = barAccel(az) + '%';
+
+    var gxB = document.getElementById('gxBar');
+    var gyB = document.getElementById('gyBar');
+    var gzB = document.getElementById('gzBar');
+    if (gxB) gxB.style.width = barGyro(gx) + '%';
+    if (gyB) gyB.style.width = barGyro(gy) + '%';
+    if (gzB) gzB.style.width = barGyro(gz) + '%';
+
+    draw3DCube();
+    drawGyroChart();
+
+    // Euler angles
+    var erEl = document.getElementById('eulerRoll');
+    var epEl = document.getElementById('eulerPitch');
+    var eyEl = document.getElementById('eulerYaw');
+    if (erEl) erEl.textContent = roll.toFixed(1) + '\u00B0';
+    if (epEl) epEl.textContent = pitch.toFixed(1) + '\u00B0';
+    if (eyEl) eyEl.textContent = yaw.toFixed(1) + '\u00B0';
+
+    // Packet freshness indicator
+    var pi = document.getElementById('packetInfo');
+    if (pi) {
+      if (lastPacketCount < 0) {
+        pi.textContent = 'No data packets received yet';
+        pi.style.color = '#ff5252';
+      } else if (sensorOk) {
+        pi.textContent = 'Sensor OK  •  Packet #' + lastPacketCount;
+        pi.style.color = '#00c853';
+      } else {
+        pi.textContent = 'BLE OK but MPU6050 I²C FAILING  •  Packet #' + lastPacketCount;
+        pi.style.color = '#ff9100';
+      }
+    }
+  } catch(e) { console.error('updateDashboard:', e); }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Init
+// ─────────────────────────────────────────────────────────
+// Three.js may still be in flight here; initVisuals() is idempotent and
+// is also retried from checkReadiness() until the CDN script lands.
+initVisuals();
+
+initWhenReady();
+
+
+// ═══════════════════════════════════════════════════════
+//  RENDER LOOP
+//
+//  Painting is deliberately NOT driven by incoming data. Data arrives in
+//  bursts -- one 4 KB chunk is ~33 complete CSV lines -- so drawing per line
+//  meant ~33 full repaints (three canvases, one of them WebGL) inside a few
+//  milliseconds and then a blank gap until the next chunk. That is what read
+//  as "laggy and flashing". Painting on the display's own cadence instead
+//  keeps every view smooth no matter how the link happens to chunk.
+// ═══════════════════════════════════════════════════════
+var lastResizeW = 0, lastResizeH = 0;
+
+function renderLoop() {
+  // Watch for layout changes (window resize, card reflow) and re-fit the
+  // WebGL backbuffer. Doing it here rather than in a resize listener also
+  // catches the case where the card changes size for other reasons.
+  var cw = window.innerWidth, ch = window.innerHeight;
+  if (cw !== lastResizeW || ch !== lastResizeH) {
+    lastResizeW = cw; lastResizeH = ch;
+    var cv = document.getElementById('cubeCanvas');
+    if (cv && cubeRenderer) fitRendererToCanvas(cubeRenderer, cv, cubeCamera);
+    renderDirty = true;
+  }
+
+  if (renderDirty) {
+    renderDirty = false;
+    updateDashboard();
+    updatePatterns();
+  }
+  // Keep animating while connected even between data bursts, so the scene and
+  // chart never look frozen on a slow link.
+  requestAnimationFrame(renderLoop);
+}
+
+window.addEventListener('resize', function() { renderDirty = true; });
+requestAnimationFrame(renderLoop);
+})();
+</script>
+</body>
+</html>

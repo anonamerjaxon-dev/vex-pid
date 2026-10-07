@@ -1,0 +1,12 @@
+{
+    "py/state": 1,
+    "ide": {
+        "py/state": {
+            "templates": null,
+            "upload_options": []
+        }
+    },
+    "kernel": "4.1.0",
+    "location": "/Users/jackson/Desktop/work related/vex pid",
+    "py/object": "pros.conductor.project.Project"
+}

@@ -38,7 +38,10 @@ So treat the first v2 run as a first run, not as a formality.
 
 v2 has a **software floor** on the cascade. The arm has no physical stop, so
 the program remembers where the arm started and refuses to drive it down past
-that point (plus a couple of degrees of slack).
+that point (plus a couple of degrees of slack). Over the last 25 degrees it
+comes down at a crawl instead of at full speed, so it can rest right on the
+limit rather than a full-speed step above it, and the screen says `FLOOR` when
+it gets there.
 
 That only works if the arm is **already sitting at its resting place when you
 press Run**, because pressing Run is what teaches the program where "the

@@ -1,6 +1,8 @@
 #include "subsystems/drive_base.hpp"
+#include "pros/rtos.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace vex_pid {
 
@@ -166,17 +168,40 @@ double DriveBase::average_velocity() const {
 void DriveBase::manual_control(double throttle, double turn) {
     m_mode = DriveMode::Idle;
 
-    double left_power = throttle + turn;
-    double right_power = throttle - turn;
+    // 1. Bend the sticks. Gentle over the first 85% of the travel, the whole
+    //    ceiling only at the stop. This is what replaces the old "multiply the
+    //    turn by 0.7" fudge: the curve is gentle where you are lining up and
+    //    quick only when you really push.
+    double forward = stick_shape(throttle, m_config.drive_speed_max,
+                                 m_config.stick);
+    double steer = stick_shape(turn, m_config.turn_speed_max,
+                               m_config.stick);
 
-    double max_abs = std::max(std::fabs(left_power), std::fabs(right_power));
-    if (max_abs > 127.0) {
-        left_power = left_power * 127.0 / max_abs;
-        right_power = right_power * 127.0 / max_abs;
+    // 2. Split arcade, sharing out any excess rather than clipping a wheel.
+    double left_power = 0.0;
+    double right_power = 0.0;
+    arcade(forward, steer, m_config.drive_speed_max, left_power, right_power);
+
+    // 3. Ramp. Nothing may jump. The step allowed depends on how long it has
+    //    been since the last call, so the robot ramps at the same speed even
+    //    if a loop runs long.
+    std::uint32_t now = pros::millis();
+    double dt_s = 0.010;
+    if (m_last_manual_ms != 0) {
+        dt_s = static_cast<double>(now - m_last_manual_ms) / 1000.0;
+        if (dt_s <= 0.0) {
+            dt_s = 0.010;
+        }
     }
+    m_last_manual_ms = now;
 
-    m_left->move(left_power);
-    m_right->move(right_power);
+    double max_step =
+        127.0 * m_config.ramp_percent_per_second / 100.0 * dt_s;
+    m_ramped_left = rate_limit(m_ramped_left, left_power, max_step);
+    m_ramped_right = rate_limit(m_ramped_right, right_power, max_step);
+
+    m_left->move(m_ramped_left);
+    m_right->move(m_ramped_right);
 }
 
 double DriveBase::inches_to_ticks(double inches) const {

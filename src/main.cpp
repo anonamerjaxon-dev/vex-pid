@@ -15,6 +15,20 @@ void initialize() {
 
     config.drive.gearset = pros::E_MOTOR_GEARSET_18;
 
+    // The driver's stick feel, ported from the Python drive program
+    // (vexcode-python/cascade_robot_drive_v2.py). 51 is 40% of 127, which is
+    // where the Python program sits. See include/control_feel.hpp for what
+    // each number does, and vexcode-python/CONTROL_FEEL.md for why.
+    config.drive.drive_speed_max = 51.0;
+    config.drive.turn_speed_max = 51.0;
+    config.drive.ramp_percent_per_second = 250.0;
+
+    config.drive.stick.deadband = 6.35;           // 5% of the stick's travel
+    config.drive.stick.fine_end = 0.85;           // gentle over the first 85%
+    config.drive.stick.fine_top = 0.40;           // ...up to 40% of the ceiling
+    config.drive.stick.expo = 2.0;                // and a curve inside that
+    config.drive.stick.min_move_fraction = 0.15;  // but never below 15%
+
     config.cascade.motor_ports = {13, -2};
 
     config.cascade.gearset = pros::E_MOTOR_GEARSET_36;

@@ -86,8 +86,11 @@ per side, using the V5 IMU for heading.
   ever exceeds full power.
 - `turn_to_heading(degrees)` runs a turn PID on IMU heading with wrap-aware
   error, i.e. turning from 350° to 10° takes the 20° path, not the 340° one.
-- `manual_control(throttle, turn)` bypasses PID entirely and applies arcade
-  mixing, with the same renormalisation.
+- `manual_control(throttle, turn)` bypasses PID entirely. The raw sticks go
+  through the stick curve in `include/control_feel.hpp`, then split arcade
+  mixing, then a slew rate limiter — see **Driver feel** below. The old
+  `turn * 0.7` scaling that used to sit in `robot.cpp` is gone; the curve does
+  that job now, and does it in the right place.
 
 Encoder conversion is explicit: wheel circumference from diameter, then
 `revolutions × 360 × gear_ratio`. With a 3.25" wheel and the 60/18 gear ratio
@@ -116,6 +119,38 @@ holding power, so a missed detection cannot stall the motor indefinitely.
 **Toggle** (`toggle`) — a 3-position mechanism (yellow / red / blue) positioned
 by a PID on motor encoder angle, with a `ToggleState` enum so callers ask for a
 colour rather than a raw angle.
+
+### Driver feel
+
+`include/control_feel.hpp` holds the whole feel of manual driving. It has no
+PROS dependency at all, so it can be read and compiled on a laptop, and it is
+ported number-for-number from the Python drive program
+(`vexcode-python/cascade_robot_drive_v2.py`). `vexcode-python/CONTROL_FEEL.md`
+is the write-up of why each piece is there.
+
+- **Deadband** — `6.35`, which is 5% of a stick, with the value *rescaled* past
+  it so that the edge of the deadband reads 0 and full stick reads 127. Without
+  the rescale there would be a step at the edge, which is the jolt the deadband
+  was meant to avoid.
+- **A two-zone curve** (`stick_shape`) — gentle over the first `fine_end` (85%)
+  of the travel, reaching only `fine_top` (40%) of the ceiling, then straight
+  out to the ceiling over the last 15%. The two halves meet exactly, so there
+  is no step anywhere. `min_move_fraction` (15%) is the slowest a moving stick
+  ever asks for, so the robot always starts moving.
+- **Split arcade** (`arcade`) — forward ± turn, with anything past the ceiling
+  shared across both wheels rather than clipped off one. Clipping one wheel
+  would make the robot drag sideways.
+- **A slew rate limiter** (`rate_limit`) — every output may only change by
+  `ramp_percent_per_second` (250% of full scale per second), so nothing can
+  lurch. There is one limiter per wheel: sharing a single limiter between them
+  would let a hard turn ration the other wheel. This is rate limiting, not
+  smoothing — averaging the stick would soften it but also wash out the fine
+  detail and add lag.
+
+The throttle and the turn stick go through the **same** curve and the same
+limiter. Only the ceiling is separate (`drive_speed_max` and `turn_speed_max`,
+both 51 = 40% of 127), so turning can be made slower than driving without
+touching the shape. All the numbers live in `config.drive` in `src/main.cpp`.
 
 ### Autonomous
 
@@ -146,11 +181,12 @@ make
 The `Makefile` compiles `src/*.cpp` and `src/**/*.cpp` with `-std=c++20
 -Wall -Wextra -O2`.
 
-> **Note on port numbers.** `src/main.cpp` currently assigns fixed ports
-> (drive 1–4, cascade 5–6, claw 7, toggle 8–9, IMU 10). These are placeholders
-> chosen during bring-up — check them against the actual robot before running
-> autonomous. Section 9 of `VEX_2026_2027_RESEARCH.md` tracks the real
-> assignment.
+> **Note on port numbers.** `src/main.cpp` is the only file that mentions ports.
+> The assignment there is the one measured on the real robot: drive left 11/17,
+> drive right 1/10, cascade 13/2, claw 16, toggle 18/8. Port 6 is a
+> communication device rather than a motor, and port 9 is where an unidentified
+> module sits, so the IMU is not confirmed and `has_imu` stays off for now.
+> Section 9 of `VEX_2026_2027_RESEARCH.md` tracks the assignment.
 
 ---
 

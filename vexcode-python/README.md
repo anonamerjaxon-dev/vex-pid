@@ -213,8 +213,21 @@ constants are commented to say which is which.
 stop and the worry is the chain coming off the bottom, so the program remembers
 where the arm was at startup (`cascade.reset_position()`) and refuses to send a
 command that would take it more than `CASCADE_LOWER_LIMIT` degrees below that.
-At the floor it stops **hard** — the ramp is there to make driving smooth, not
-to soften a limit — and the brain screen says `FLOOR`.
+
+It also **creeps onto the floor instead of stopping a step above it.** Within
+`CASCADE_CREEP_BAND` (25°) of the limit the arm stops being asked for
+`CASCADE_SPEED` and is asked for `CASCADE_CREEP_SPEED` (10) instead, which gives
+the ramp the whole last stretch to bring it down. At the limit itself the
+command goes **hard to zero** — the ramp is there to make driving smooth, not to
+soften a limit — and the brain screen says `FLOOR`. The ramp's own value is
+deliberately left alone at that moment: zeroing it too would make the ramp start
+over from nothing on the next loop and nudge the arm down again, which is a
+stutter at the floor for no benefit.
+
+The result is that the arm rests within about a degree of the limit instead of a
+full-speed step above it. The exact distance is however far the arm travels in
+one loop at `CASCADE_CREEP_SPEED`, so raising the creep speed to get more torque
+also means resting slightly further from the limit.
 
 **The claw grips and stops squeezing.** It has a permanent ceiling of
 `CLAW_HOLD_AMPS` (1.2 A), and once it has been straining it eases its closing
@@ -641,3 +654,5 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Speeds raised to **40** across the board — 10 was too slow for the motors to move the robot. |
 | 2026-10-08 | **Version 1 frozen as the backup.** Working version tagged `v1-drive-working-40` (commit `67304de` on GitHub) and copied to `versions/v1-drive-working-40/` in the Desktop folder, with a note on how to restore it. |
 | 2026-10-08 | Added **drive v2**: `cascade_robot_drive_v2.py` / `Cascade Robot Drive V2.v5python`. A two-zone stick curve, per-control rate limiting, strain sensing with torque caps on the cascade and the claw, and a software floor so the cascade cannot be driven below where it started. v1 itself was not touched. Added [Why drive v2 feels the way it does](CONTROL_FEEL.md) and [Testing safely](TESTING_SAFETY.md). |
+| 2026-10-08 | **v2's cascade now creeps onto its floor.** Coming down at `CASCADE_SPEED` it used to stop up to a full step above `CASCADE_LOWER_LIMIT`; within `CASCADE_CREEP_BAND` (25°) it is asked for `CASCADE_CREEP_SPEED` (10) instead, so it rests within about a degree of the limit. The ramp's own value is no longer zeroed at the floor, which removes a small stutter there. |
+| 2026-10-08 | **The same stick feel ported to the PROS C++.** New `include/control_feel.hpp` holds the deadband, the two-zone curve, the slew rate limiter and the split arcade mix; `DriveBase::manual_control` now shapes the sticks, so the old `turn * 0.7` fudge is gone. The settings live in `config.drive` in `src/main.cpp`. |

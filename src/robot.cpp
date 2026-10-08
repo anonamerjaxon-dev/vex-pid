@@ -61,9 +61,12 @@ void Robot::driver_tick() {
 
     int throttle = master.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
     int turn = master.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+    // Pass the sticks straight through. The stick curve, the split arcade mix
+    // and the ramp all live inside manual_control now, so the old
+    // "turn * 0.7" fudge is gone - the curve is what makes the middle gentle.
     m_drive.manual_control(
         static_cast<double>(throttle),
-        static_cast<double>(turn) * 0.7
+        static_cast<double>(turn)
     );
 
     if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {

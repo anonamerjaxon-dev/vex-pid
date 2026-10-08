@@ -118,6 +118,14 @@ CASCADE_DEG_PER_LOOP = 12.0   # a red (36:1) motor is 100 RPM, which is 600
                               # 20 ms loop. Used to stop the arm one loop
                               # before its limit instead of letting it coast
                               # past. Change it if you change CASCADE_GEARS.
+CASCADE_CREEP_BAND = 25.0     # degrees above the limit where the arm stops
+                              # coming down fast and starts creeping instead,
+                              # so it can rest right on the limit rather than a
+                              # full-speed step above it.
+CASCADE_CREEP_SPEED = 10.0    # the slow speed it creeps down at over that last
+                              # stretch. Slower means it gets closer to the
+                              # limit; too slow and the motor will not turn at
+                              # all, so raise this if the arm refuses to creep.
 
 # ---- Strain protection ---------------------------------------------------
 # Amps are the honest way to tell "working hard" from "stuck". The numbers
@@ -429,33 +437,48 @@ def driver():
         elif controller_1.buttonL2.pressing():
             asked_cascade = -CASCADE_SPEED
 
-        # Strain easing, then the ramp. Easing first means the ramp has
-        # already smoothed whatever the guard decided.
+        # Strain easing first, so the ramp below smooths whatever the guard
+        # decided.
         asked_cascade = cascade_guard.watch(asked_cascade)
+
+        # Where is the arm? One read, used by both checks below - asking the
+        # motor is not free.
+        cascade_position = cascade.position(DEGREES)
+
+        # Close to the floor, aim for a crawl instead of the full speed. The
+        # ramp then has the whole last stretch to slow the arm down, so it
+        # arrives at the limit gently and can rest right on it.
+        if (asked_cascade * CASCADE_DOWN_SIGN > 0
+                and cascade_position - CASCADE_LOWER_LIMIT <= CASCADE_CREEP_BAND):
+            asked_cascade = CASCADE_CREEP_SPEED * CASCADE_DOWN_SIGN
+
         ramped_cascade = ramp_towards(ramped_cascade, asked_cascade, RAMP_PER_LOOP)
 
         # The soft lower limit. There is no physical stop on this arm, so we
         # simply refuse to send a command that would take it below where it
-        # started. Ask the motor where it is once - asking is not free.
+        # started.
         #
         # The limit is checked against the command we are ABOUT to send, not
         # the last one, because the ramp may have just made that command
         # bigger than the loop before.
-        cascade_position = cascade.position(DEGREES)
         next_position = cascade_position + (ramped_cascade / 100.0) * CASCADE_DEG_PER_LOOP
 
-        at_floor = False
-        if (ramped_cascade * CASCADE_DOWN_SIGN > 0
-                and next_position <= CASCADE_LOWER_LIMIT):
-            # A limit is a limit. The ramp exists to make driving feel
-            # smooth, not to soften a stop, so at the floor the command goes
-            # straight to zero and the brake does the rest. That is what
-            # keeps the arm from coasting past - it stops within one loop of
-            # the limit however fast it was coming down.
-            ramped_cascade = 0.0
-            at_floor = True
+        at_floor = (ramped_cascade * CASCADE_DOWN_SIGN > 0
+                    and next_position <= CASCADE_LOWER_LIMIT)
 
-        cascade_moving = run_group(cascade, ramped_cascade, cascade_moving)
+        # A limit is a limit. The ramp exists to make driving feel smooth, not
+        # to soften a stop, so at the floor the command goes straight to zero
+        # and the brake does the rest. Coming down at the creep speed above is
+        # what makes "the floor" mean within about a degree of the limit
+        # instead of a whole fast step above it.
+        #
+        # The ramp's own value is deliberately left alone. Zeroing it as well
+        # would make the ramp start over from nothing on the next loop and
+        # nudge the arm down again - a little stutter at the floor for no
+        # benefit.
+        send_cascade = 0.0 if at_floor else ramped_cascade
+
+        cascade_moving = run_group(cascade, send_cascade, cascade_moving)
 
         # --- Claw: R1 close, R2 open --------------------------------------
         # The claw's current ceiling is on the whole time, so the moment it

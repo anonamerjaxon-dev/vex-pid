@@ -79,16 +79,19 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 # The drive sticks already scale themselves from 0 to 100, so these are
 # a ceiling - the stick goes from nothing up to this number, never past it.
 #
-# These are SLOW ON PURPOSE so the first drive is safe. The motor test
-# program runs at 40% (`TEST_SPEED`) and these match it. Raise them about
+# EVERYTHING IS 10 FOR THE FIRST DRIVE. That is crawling pace on purpose:
+# the job of this first run is to check that each part moves the right way
+# and that nothing crashes, not to drive properly.
+#
+# If a part will not move at all at 10, that is normal - 10% is not much
+# torque - and the fix is to raise just that one number. Raise them about
 # 10 at a time as you get comfortable. DRIVE_SPEED and TURN_SPEED are the
-# two that matter most; CASCADE_SPEED only needs raising if the arm cannot
-# lift a game piece.
-DRIVE_SPEED = 40
-TURN_SPEED = 40
-CASCADE_SPEED = 25    # slow, so the arm creeps up instead of jumping
-CLAW_SPEED = 30       # slow, so the claw does not slam into things
-TOGGLE_SPEED = 40
+# two that matter most for driving.
+DRIVE_SPEED = 10
+TURN_SPEED = 10
+CASCADE_SPEED = 10
+CLAW_SPEED = 10
+TOGGLE_SPEED = 10
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5

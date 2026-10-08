@@ -123,16 +123,22 @@ CASCADE_DEG_PER_LOOP = 12.0   # a red (36:1) motor is 100 RPM, which is 600
 # Amps are the honest way to tell "working hard" from "stuck". The numbers
 # below are a starting point: watch the brain screen while you test them.
 USE_TORQUE_LIMITS = True      # set to False if set_max_torque misbehaves
-TORQUE_FULL_AMPS = 2.5        # the most an 11W V5 motor can pull = no limit
+TORQUE_FULL_AMPS = 2.5        # the ceiling for EACH motor when nothing is wrong.
+                              # High enough that it is effectively "no limit".
 
-CASCADE_STRAIN_AMPS = 2.0     # both cascade motors added together
-CASCADE_EASE_AMPS = 1.0       # torque ceiling while it is straining
+# Careful: MotorGroup.current() adds the whole group up, but
+# MotorGroup.set_max_torque() sets the ceiling on EACH motor. So the two
+# numbers below are counted differently, and the comments say which is which.
+CASCADE_STRAIN_AMPS = 2.0     # the two cascade motors ADDED TOGETHER
+CASCADE_EASE_AMPS = 1.0       # ceiling for EACH motor while straining, so
+                              # 2.0 A for the pair
 CASCADE_EASE_SPEED = 0.35     # ...and ease the speed down to 35%
 CASCADE_STRAIN_LOOPS = 3      # it must strain this many loops in a row
 CASCADE_EASE_STEP = 0.05      # how quickly the easing comes on
 CASCADE_RECOVER_STEP = 0.06   # how quickly it lets go again
 
-CLAW_STRAIN_AMPS = 0.8        # the claw, above this it is gripping something
+CLAW_STRAIN_AMPS = 0.8        # one motor, so no adding up: above this it is
+                              # gripping something
 CLAW_HOLD_AMPS = 1.2          # its current ceiling, on for the whole run
 CLAW_HOLD_SPEED = 0.35        # ease the closing speed to 35% while gripping
 CLAW_STRAIN_LOOPS = 2

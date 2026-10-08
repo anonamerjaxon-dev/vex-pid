@@ -121,11 +121,18 @@ deserve their own curves.
 VEX gives two tools for this, both on the motor object:
 
 - `motor.current(CurrentUnits.AMP)` - how many amps it is pulling right now.
-  On a `MotorGroup` this **adds up every motor in the group**, which is what
-  you want for a two-motor arm.
+  On a `MotorGroup` this **adds up every motor in the group** (the SDK stub is
+  explicit about it: "Returns the total current all motors are using"), which
+  is what you want for a two-motor arm.
 - `motor.set_max_torque(amps, CurrentUnits.AMP)` - a ceiling on how hard it
   is allowed to push. On an 11W motor you can also give it NM or a percent;
-  on a 5.5W motor it has to be amps.
+  on a 5.5W motor it has to be amps. On a `MotorGroup` this one is **per
+  motor**, not a group total - it loops over the motors and sets the same
+  ceiling on each.
+
+That difference is easy to trip over, so v2's constants say which is which:
+`CASCADE_STRAIN_AMPS` is the pair added together, while `CASCADE_EASE_AMPS`
+and `TORQUE_FULL_AMPS` are the ceiling for each motor.
 
 v2 wraps those in `class StrainGuard`:
 

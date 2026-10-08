@@ -203,9 +203,11 @@ smoothing filter is in CONTROL_FEEL.md.
 **The cascade watches its own current.** `class StrainGuard` reads
 `current(CurrentUnits.AMP)`. If the arm pulls more than `CASCADE_STRAIN_AMPS`
 (2.0 A, both motors added together) for three loops in a row, the program eases
-the speed down towards 35% and drops the torque ceiling to 1.0 A, then recovers
-gently when the strain goes away. The mechanism is
-`set_max_torque(amps, CurrentUnits.AMP)`.
+the speed down towards 35% and drops the torque ceiling to 1.0 A **per motor**,
+then recovers gently when the strain goes away. The mechanism is
+`set_max_torque(amps, CurrentUnits.AMP)`. Note that the group's `current()`
+adds the motors up while its `set_max_torque()` applies to each motor, and the
+constants are commented to say which is which.
 
 **The cascade cannot be driven past where it started.** The arm has no physical
 stop and the worry is the chain coming off the bottom, so the program remembers

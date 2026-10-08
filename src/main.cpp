@@ -38,7 +38,7 @@ void initialize() {
     config.claw.stall_current_ma = 1200;
     config.claw.stall_check_after_ms = 200;
 
-    config.toggle.motor_ports = {-18, 8};
+    config.toggle.motor_ports = {18, -8};
 
     config.toggle.yellow_angle = 0.0;
     config.toggle.red_angle = 90.0;

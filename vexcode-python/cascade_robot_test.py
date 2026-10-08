@@ -99,8 +99,8 @@ cascade_left_13 = Motor(Ports.PORT13, CASCADE_GEARS, False)
 cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)
 
 # Toggle: 2 x 5.5W, kept in sync (5.5W motors are always 200 RPM)
-toggle_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, True)
-toggle_8 = Motor(Ports.PORT8, GearSetting.RATIO_18_1, False)
+toggle_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, False)
+toggle_8 = Motor(Ports.PORT8, GearSetting.RATIO_18_1, True)
 
 # Claw: on the long 1500mm cable
 claw_16 = Motor(Ports.PORT16, CLAW_GEARS, False)

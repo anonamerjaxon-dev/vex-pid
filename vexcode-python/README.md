@@ -97,11 +97,11 @@ Front, back, left and right are as the robot drives forward.
 | 10 | Drive right back | 11W | no |
 | 13 | Cascade left | 11W | no |
 | 2 | Cascade right | 11W | yes |
-| 18 | Toggle | 5.5W | yes |
-| 8 | Toggle | 5.5W | no |
+| 18 | Toggle | 5.5W | no |
+| 8 | Toggle | 5.5W | yes |
 | 16 | Claw (on the long 1500 mm cable) | — | no |
 
-- The "Reversed" column was measured on the real robot with the [motor test program](#motor-test-program), in **MATCH** direction, on 2026-10-08. It is no longer a guess: all four drive wheels and both toggles were backwards and have been flipped. The **cascade** (13 / 2) and the **claw** (16) were already right.
+- The "Reversed" column was measured on the real robot with the [motor test program](#motor-test-program), in **MATCH** direction, on 2026-10-08. It is no longer a guess: all four drive wheels were backwards and have been flipped (**1, 10, 11, 17**). The **toggles** (18 / 8), the **cascade** (13 / 2) and the **claw** (16) were already right.
 - **Port 9** has a single device on it that nobody has identified yet. The brain's
   **Devices** screen shows what it is. If it's an inertial sensor, see [Add an inertial sensor](#add-an-inertial-sensor).
 - **Free ports** for tracking wheels and sensors: 3, 4, 5, 7, 12, 14, 15, 19, 20.
@@ -499,4 +499,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-07 | First version: driver control, PID autonomous ported from the C++ code, encoder odometry ready for tracking wheels. Tested in simulation only. |
 | 2026-10-08 | Real ports from the team: drive left 11/20, right 1/10, cascade left 12 / right 2, toggle 18 + 8, claw 16. Added the motor test program. |
 | 2026-10-08 | Second wiring check, two ports were wrong: cascade left **12 → 13** and drive left back **20 → 17**. Updated the Python programs, the `.v5python` copies, the PROS project and this table. |
-| 2026-10-08 | Direction test on the robot. All four drive wheels and both toggles spun the wrong way in MATCH direction, so **1, 10, 11, 17, 18 and 8** were flipped. Cascade (13 / 2) and claw (16) needed no change. Ports and the PROS project updated to match. |
+| 2026-10-08 | Direction test on the robot. All four drive wheels spun the wrong way in MATCH direction, so **1, 10, 11 and 17** were flipped. The toggles (18 / 8), cascade (13 / 2) and claw (16) were already right. Ports and the PROS project updated to match. |

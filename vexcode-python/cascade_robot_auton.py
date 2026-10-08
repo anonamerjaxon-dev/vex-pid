@@ -92,7 +92,8 @@ DRIVE_WHEEL_GEAR_TEETH = 60   # gear on the wheel
 TRACK_WIDTH_IN = 12.0         # center of left wheels to center of right wheels
 
 # Inertial sensor. None = not on the robot. If you add one, put its port
-# here (for example Ports.PORT8) and turns get much more accurate.
+# here and turns get much more accurate. If the brain's Devices screen
+# shows the module on port 9 is an inertial sensor, use Ports.PORT9.
 IMU_PORT = None
 
 # Tracking (coordinate) wheels: unpowered omni wheels on Rotation sensors.
@@ -148,27 +149,33 @@ CLAW_CLOSE_TIMEOUT_MS = 2000
 CLAW_HOLD_VOLTS = 1.4          # light squeeze so the game piece stays put
 
 # --- Devices ---
+# Front/back/left/right are as the robot drives forward.
+# This block is the same in every version of the program (match, test and
+# driver-only). If the test program shows a motor turning the wrong way,
+# flip its True/False here AND in the other versions.
 
 controller_1 = Controller(PRIMARY)
 
 # Drivetrain: 4 x 11W
-drive_left_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
-drive_left_10 = Motor(Ports.PORT10, DRIVE_GEARS, False)
-drive_right_11 = Motor(Ports.PORT11, DRIVE_GEARS, True)
-drive_right_20 = Motor(Ports.PORT20, DRIVE_GEARS, True)
-left_drive = MotorGroup(drive_left_1, drive_left_10)
-right_drive = MotorGroup(drive_right_11, drive_right_20)
+drive_left_front_11 = Motor(Ports.PORT11, DRIVE_GEARS, False)
+drive_left_back_20 = Motor(Ports.PORT20, DRIVE_GEARS, False)
+drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, True)
+drive_right_back_10 = Motor(Ports.PORT10, DRIVE_GEARS, True)
+left_drive = MotorGroup(drive_left_front_11, drive_left_back_20)
+right_drive = MotorGroup(drive_right_front_1, drive_right_back_10)
 
 # Cascade: 2 x 11W, kept in sync
-cascade_left_2 = Motor(Ports.PORT2, CASCADE_GEARS, False)
-cascade_right_12 = Motor(Ports.PORT12, CASCADE_GEARS, True)
+cascade_left_12 = Motor(Ports.PORT12, CASCADE_GEARS, False)
+cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)
 
 # Toggle: 2 x 5.5W, kept in sync (5.5W motors are always 200 RPM)
-toggle_left_6 = Motor(Ports.PORT6, GearSetting.RATIO_18_1, False)
-toggle_right_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, True)
+toggle_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, False)
+toggle_8 = Motor(Ports.PORT8, GearSetting.RATIO_18_1, True)
 
 # Claw: on the long 1500mm cable
-claw_5 = Motor(Ports.PORT5, CLAW_GEARS, False)
+claw_16 = Motor(Ports.PORT16, CLAW_GEARS, False)
+
+# Port 9: a single device nobody has identified yet. Not used.
 
 DRIVE_INCHES_PER_DEG = (math.pi * DRIVE_WHEEL_DIAMETER_IN / 360
                         * DRIVE_MOTOR_GEAR_TEETH / DRIVE_WHEEL_GEAR_TEETH)
@@ -315,11 +322,11 @@ class Odometry:
             wait(50, MSEC)
 
     def left_inches(self):
-        degrees = (drive_left_1.position(DEGREES) + drive_left_10.position(DEGREES)) / 2
+        degrees = (drive_left_front_11.position(DEGREES) + drive_left_back_20.position(DEGREES)) / 2
         return degrees * DRIVE_INCHES_PER_DEG
 
     def right_inches(self):
-        degrees = (drive_right_11.position(DEGREES) + drive_right_20.position(DEGREES)) / 2
+        degrees = (drive_right_front_1.position(DEGREES) + drive_right_back_10.position(DEGREES)) / 2
         return degrees * DRIVE_INCHES_PER_DEG
 
     def raw_heading(self):
@@ -515,23 +522,23 @@ def drive_to_point(x, y, max_volts=12, timeout_ms=None):
 
 def claw_open():
     # Timed open (vex-pid Claw::open)
-    claw_5.spin(REVERSE, CLAW_SPEED, PERCENT)
+    claw_16.spin(REVERSE, CLAW_SPEED, PERCENT)
     wait(CLAW_OPEN_MS, MSEC)
-    claw_5.stop()
+    claw_16.stop()
 
 def claw_close():
     # Close until the motor current spikes from squeezing something, then
     # keep a light grip. Gives up after the timeout. (vex-pid Claw::close)
-    claw_5.spin(FORWARD, CLAW_SPEED, PERCENT)
+    claw_16.spin(FORWARD, CLAW_SPEED, PERCENT)
     start = brain.timer.system()
     while auton_active:
         elapsed = brain.timer.system() - start
         if elapsed > CLAW_CLOSE_TIMEOUT_MS:
             break
-        if elapsed > CLAW_STALL_CHECK_MS and claw_5.current(CurrentUnits.AMP) > CLAW_STALL_AMPS:
+        if elapsed > CLAW_STALL_CHECK_MS and claw_16.current(CurrentUnits.AMP) > CLAW_STALL_AMPS:
             break
         wait(10, MSEC)
-    claw_5.spin(FORWARD, CLAW_HOLD_VOLTS, VoltageUnits.VOLT)
+    claw_16.spin(FORWARD, CLAW_HOLD_VOLTS, VoltageUnits.VOLT)
 
 # --- Background loop (tracking, mechanism PID, brain screen) ---
 
@@ -615,18 +622,18 @@ ROUTINES = {
 
 left_drive.set_stopping(BRAKE)
 right_drive.set_stopping(BRAKE)
-cascade_left_2.set_stopping(HOLD)
-cascade_right_12.set_stopping(HOLD)
-toggle_left_6.set_stopping(HOLD)
-toggle_right_18.set_stopping(HOLD)
-claw_5.set_stopping(HOLD)
+cascade_left_12.set_stopping(HOLD)
+cascade_right_2.set_stopping(HOLD)
+toggle_18.set_stopping(HOLD)
+toggle_8.set_stopping(HOLD)
+claw_16.set_stopping(HOLD)
 
 # Start both sides of each synced pair from the same position.
 # The cascade must be all the way down when the program starts.
-cascade_left_2.set_position(0, DEGREES)
-cascade_right_12.set_position(0, DEGREES)
-toggle_left_6.set_position(0, DEGREES)
-toggle_right_18.set_position(0, DEGREES)
+cascade_left_12.set_position(0, DEGREES)
+cascade_right_2.set_position(0, DEGREES)
+toggle_18.set_position(0, DEGREES)
+toggle_8.set_position(0, DEGREES)
 
 brain.screen.print("Calibrating - don't move the robot")
 odom = Odometry()
@@ -637,9 +644,9 @@ brain.screen.clear_screen()
 drive_pid = PID(DRIVE_GAINS)
 heading_pid = PID(HEADING_GAINS)
 turn_pid = PID(TURN_GAINS)
-cascade = SyncedMechanism(cascade_left_2, cascade_right_12, CASCADE_GAINS,
+cascade = SyncedMechanism(cascade_left_12, cascade_right_2, CASCADE_GAINS,
                           CASCADE_FEEDFORWARD_VOLTS, 0, CASCADE_MAX_DEG)
-toggle = SyncedMechanism(toggle_left_6, toggle_right_18, TOGGLE_GAINS)
+toggle = SyncedMechanism(toggle_18, toggle_8, TOGGLE_GAINS)
 
 Thread(background_loop)
 
@@ -682,7 +689,7 @@ def driver_control():
             cascade_speed = CASCADE_SPEED
         elif controller_1.buttonL2.pressing():
             cascade_speed = -CASCADE_SPEED
-        cascade_moving = run_pair(cascade_left_2, cascade_right_12, cascade_speed, cascade_moving)
+        cascade_moving = run_pair(cascade_left_12, cascade_right_2, cascade_speed, cascade_moving)
 
         # Claw: R1 close, R2 open
         claw_speed = 0
@@ -690,13 +697,13 @@ def driver_control():
             claw_speed = CLAW_SPEED
         elif controller_1.buttonR2.pressing():
             claw_speed = -CLAW_SPEED
-        claw_moving = run_single(claw_5, claw_speed, claw_moving)
+        claw_moving = run_single(claw_16, claw_speed, claw_moving)
 
         # Toggle: hold Down arrow to spin
         toggle_speed = 0
         if controller_1.buttonDown.pressing():
             toggle_speed = TOGGLE_SPEED
-        toggle_moving = run_pair(toggle_left_6, toggle_right_18, toggle_speed, toggle_moving)
+        toggle_moving = run_pair(toggle_18, toggle_8, toggle_speed, toggle_moving)
 
         wait(20, MSEC)
 

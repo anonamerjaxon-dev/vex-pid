@@ -4,12 +4,16 @@ This folder is the cascade robot's program in **VEXcode V5 Python**. It has
 the same PID setup as the PROS C++ code in the rest of this repo, rewritten so
 it can be opened, edited and downloaded straight from VEXcode.
 
-It's one competition program:
+There are two programs:
 
-- **Driver control**: split arcade drive, cascade, claw and toggle.
-- **Autonomous**: PID drive and turns, cascade/toggle PID, claw grip.
-- **Position tracking (odometry)**: works now with the drive motor encoders.
-  When tracking wheels are added, you change a few settings and nothing else.
+1. **Match program** (`Cascade Robot Auton`), used in competition:
+   - **Driver control**: split arcade drive, cascade, claw and toggle.
+   - **Autonomous**: PID drive and turns, cascade/toggle PID, claw grip.
+   - **Position tracking (odometry)**: works now with the drive motor encoders.
+     When tracking wheels are added, you change a few settings and nothing else.
+2. **Motor test program** (`Cascade Robot Test`), used for checking wiring.
+   Each button spins **one** motor, in exactly the direction the match program
+   uses, so you can check every port and direction one at a time.
 
 > **Status:** so far this has only been tested on a computer simulation of the
 > robot, not on the real robot. Go through [Before the first real run](#before-the-first-real-run)
@@ -21,6 +25,7 @@ It's one competition program:
 - [Putting it on the robot](#putting-it-on-the-robot)
 - [Controls](#controls)
 - [Ports](#ports)
+- [Motor test program](#motor-test-program)
 - [How the program is laid out](#how-the-program-is-laid-out)
 - [Common edits](#common-edits)
   - [Pick which autonomous runs](#pick-which-autonomous-runs)
@@ -42,15 +47,18 @@ It's one competition program:
 
 | File | What it is |
 |---|---|
-| `Cascade Robot Auton.v5python` | **Open this in VEXcode.** The full program. |
-| `cascade_robot_auton.py` | The same program as a plain Python file, so it can be read and reviewed on GitHub. |
-| `sync_files.py` | Copies changes between the two files above (runs on your computer, not the robot). |
+| `Cascade Robot Auton.v5python` | **Match program.** Open this in VEXcode. |
+| `cascade_robot_auton.py` | The match program as a plain Python file, so it can be read and reviewed on GitHub. |
+| `Cascade Robot Test.v5python` | **Motor test program.** Open this in VEXcode. |
+| `cascade_robot_test.py` | The motor test program as a plain Python file. |
+| `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
 
 ## Putting it on the robot
 
 1. Open **VEXcode V5**, then **File → Open** and pick `Cascade Robot Auton.v5python`.
 2. Plug in the brain (or the controller, with the brain paired), pick a slot and press **Download**.
+   Put the motor test program in a different slot, so both are on the brain.
 3. Before starting the program:
    - The **cascade must be all the way down.** The program counts "0 degrees" from wherever the lift is at startup.
    - If an inertial sensor is set up, **don't touch the robot** while the screen says "Calibrating" (about 2 seconds).
@@ -79,22 +87,73 @@ Auton: pid_test            <- which autonomous routine is selected
 
 ## Ports
 
+Front, back, left and right are as the robot drives forward.
+
 | Port | Part | Motor | Reversed |
 |---|---|---|---|
-| 1 | Drive left | 11W | no |
-| 10 | Drive left | 11W | no |
-| 11 | Drive right | 11W | yes |
-| 20 | Drive right | 11W | yes |
-| 2 | Cascade left | 11W | no |
-| 12 | Cascade right | 11W | yes |
-| 6 | Toggle left | 5.5W | no |
-| 18 | Toggle right | 5.5W | yes |
-| 5 | Claw (on the long 1500 mm cable) | — | no |
+| 11 | Drive left front | 11W | no |
+| 20 | Drive left back | 11W | no |
+| 1 | Drive right front | 11W | yes |
+| 10 | Drive right back | 11W | yes |
+| 12 | Cascade left | 11W | no |
+| 2 | Cascade right | 11W | yes |
+| 18 | Toggle | 5.5W | no |
+| 8 | Toggle | 5.5W | yes |
+| 16 | Claw (on the long 1500 mm cable) | — | no |
 
-- **Port 8** has a cable plugged in that this program doesn't use. If it's an inertial sensor, see [Add an inertial sensor](#add-an-inertial-sensor).
-- **Free ports** for tracking wheels and sensors: 3, 4, 7, 9, 13–17, 19.
+- The "Reversed" column is a first guess. **Check it with the [motor test program](#motor-test-program).**
+- **Port 9** has a single device on it that nobody has identified yet. The brain's
+  **Devices** screen shows what it is. If it's an inertial sensor, see [Add an inertial sensor](#add-an-inertial-sensor).
+- **Free ports** for tracking wheels and sensors: 3–7, 13–15, 17, 19.
 - The two **cascade** motors and the two **toggle** motors are kept exactly in
   sync: whichever one gets ahead is slowed down until the other catches up.
+
+## Motor test program
+
+Use this whenever the wiring changes, before running the match program.
+Put the robot **on a stand** so the wheels are off the ground. Then hold one
+button at a time:
+
+| Button | Motor | It's right if... |
+|---|---|---|
+| Up | Drive left front (11) | the wheel rolls forward |
+| Down | Drive left back (20) | the wheel rolls forward |
+| X | Drive right front (1) | the wheel rolls forward |
+| B | Drive right back (10) | the wheel rolls forward |
+| L1 | Cascade left (12) | the lift goes up |
+| R1 | Cascade right (2) | the lift goes up |
+| L2 | Toggle (18) | it spins the same way as 8 |
+| R2 | Toggle (8) | it spins the same way as 18 |
+| A | Claw (16) | the claw closes |
+| Right arrow | — | flips between MATCH direction and REVERSE (to move things back) |
+
+**Why this proves the match program is right:** both programs use the exact
+same `# --- Devices` block (same ports, same `True`/`False`). Each button
+spins its motor the same way the match program does for drive forward, cascade
+up, claw close and toggle spin. So if L1 makes the left cascade motor go up and
+R1 makes the right one go up, the two will work together in a match.
+
+**If a motor goes the wrong way**, flip its `True`/`False` in the
+`# --- Devices` block, in **both** programs. For example:
+
+```python
+cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)   # True -> False
+```
+
+Good to know:
+
+- **Only one motor spins at a time.** Pressing two buttons at once spins nothing.
+- **Linked motors move together.** If both wheels on one side are geared
+  together, one button turns the whole side. One cascade motor also lifts the
+  whole cascade. That's normal: just check the direction.
+- **Everything coasts in the test** (no holding), so the other motor of a pair
+  doesn't fight the one being tested. Because of that, the cascade can slide
+  down when you let go. Test it near the bottom with short presses.
+- **The test runs at 40% speed** (`TEST_SPEED`). That's slower than a match,
+  but the direction is the same.
+- **The brain screen** lists every button, motor and what it should do.
+  If a motor isn't found on its port, its row says `MISSING`, so a cable in
+  the wrong port shows up right away.
 
 ## How the program is laid out
 
@@ -105,7 +164,7 @@ you can jump to it with Find (Ctrl/Cmd+F). From top to bottom:
 |---|---|---|
 | `#region VEXcode Generated...` | VEXcode's own setup code | **No.** VEXcode may rewrite it. |
 | `# --- Settings` | Every number you'd want to change: routine, gearing, ports for sensors, PID gains, presets, claw timing | **Yes, most edits go here** |
-| `# --- Devices` | Motor ports and which motors are reversed | When wiring changes |
+| `# --- Devices` | Motor ports and which motors are reversed. The same block is in the motor test program. | When wiring changes (change both programs) |
 | `# --- Helpers` | Small functions (`clamp`, sync for motor pairs) | Rarely |
 | `# --- PID controller` | The `PID` class | Rarely |
 | `# --- Position tracking` | The `Odometry` class (where the robot is) | Rarely |
@@ -213,15 +272,17 @@ Extra options:
 Ports are in `# --- Devices`:
 
 ```python
-drive_right_11 = Motor(Ports.PORT11, DRIVE_GEARS, True)
-#                      ^ port        ^ cartridge  ^ reversed?
+drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, True)
+#                           ^ port       ^ cartridge  ^ reversed?
 ```
 
-- Moving a cable: change `Ports.PORT11` to the new port. You can rename the
+- **Always change both programs** (match and motor test), so they stay the same.
+- Moving a cable: change `Ports.PORT1` to the new port. You can rename the
   variable to match, but then you also have to change it everywhere else it's used.
-- A motor runs the wrong way: flip `True` / `False`.
+- A motor runs the wrong way: flip `True` / `False`. The motor test program
+  shows which one.
 - Two synced motors fight (buzzing, stalling, or one side twisting): one of
-  them is reversed wrong. Flip the right-side motor first.
+  them is reversed wrong. Run the motor test program to find which.
 
 ### Change driver speeds or buttons
 
@@ -333,15 +394,16 @@ there is one. **Tracking wheels plus an inertial sensor** is the most accurate s
 
 ### Add an inertial sensor
 
-Set `IMU_PORT = Ports.PORT8` (or whichever port it's on) in Settings. Nothing
+Set `IMU_PORT = Ports.PORT9` (or whichever port it's on) in Settings. Nothing
 else changes. Turns get much more accurate, because the heading no longer
 depends on wheel slip or `TRACK_WIDTH_IN`. The robot has to stay still for
 about 2 seconds while it calibrates at startup.
 
 ## Keeping the .py and .v5python the same
 
-VEXcode edits the `.v5python` file. GitHub shows the `.py` file. After
-changing one, copy the change into the other before committing:
+VEXcode edits the `.v5python` files. GitHub shows the `.py` files. After
+changing one, copy the change into the other before committing. Each
+command does both programs:
 
 ```bash
 python3 sync_files.py from-vexcode   # you edited and saved in VEXcode
@@ -384,18 +446,18 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
 - [ ] **Cascade cartridge.** It's set to red (`RATIO_36_1`) from the design
   doc. Check it, because a wrong cartridge makes all the heights wrong.
 - [ ] **Cascade presets and toggle angles.** These are placeholders. See [above](#set-the-cascade-heights-and-toggle-angles).
-- [ ] **Motor directions.** With the robot on a stand, check that every
-  mechanism moves the right way in driver control, slowly at first.
-- [ ] **Port 8.** Find out what's plugged in there.
+- [ ] **Motor test program.** Check every motor's port and direction. See [Motor test program](#motor-test-program).
+- [ ] **Port 9.** Check the brain's Devices screen to see what's plugged in there.
 - [ ] **Tune the PID** with `pid_test`.
 
 ## Troubleshooting
 
 | Problem | Likely cause / fix |
 |---|---|
-| Robot spins when you push the stick forward | One drive side is reversed wrong. Flip the `True`/`False` on that side's motors. |
+| Robot spins when you push the stick forward | A drive motor is reversed wrong. Run the motor test program to find it. |
 | In autonomous, it turns the wrong way or drives in circles | Same as above: the drive directions are wrong, so the heading is backwards. |
-| Cascade or toggle motors buzz or fight | One motor of the pair is reversed wrong. |
+| Cascade or toggle motors buzz or fight | One motor of the pair is reversed wrong. Run the motor test program. |
+| Motor test shows `MISSING` | No motor on that port. Check the cable, or fix the port number in both programs. |
 | Cascade shows negative numbers or the presets are off | It wasn't all the way down when the program started. |
 | Moves end early and short | They're timing out. Raise `kp` (see tuning), or pass a bigger `timeout_ms`. |
 | Claw closes but stops before gripping | `CLAW_STALL_AMPS` is too low. Raise it a little. |
@@ -433,3 +495,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | Date | Change |
 |---|---|
 | 2026-10-07 | First version: driver control, PID autonomous ported from the C++ code, encoder odometry ready for tracking wheels. Tested in simulation only. |
+| 2026-10-08 | Real ports from the team: drive left 11/20, right 1/10, cascade left 12 / right 2, toggle 18 + 8, claw 16. Added the motor test program. |

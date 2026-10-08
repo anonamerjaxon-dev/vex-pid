@@ -4,7 +4,7 @@ This folder is the cascade robot's program in **VEXcode V5 Python**. It has
 the same PID setup as the PROS C++ code in the rest of this repo, rewritten so
 it can be opened, edited and downloaded straight from VEXcode.
 
-There are two programs:
+The two main programs are:
 
 1. **Match program** (`Cascade Robot Auton`), used in competition:
    - **Driver control**: split arcade drive, cascade, claw and toggle.
@@ -14,6 +14,11 @@ There are two programs:
 2. **Motor test program** (`Cascade Robot Test`), used for checking wiring.
    Each button spins **one** motor, in exactly the direction the match program
    uses, so you can check every port and direction one at a time.
+
+There are also three programs for driver control and for the bench:
+**drive v1** (`Cascade Robot Drive`, the known-good one), **drive v2**
+(`Cascade Robot Drive V2`, see [Drive v2](#drive-v2)) and the **amps measuring
+tool** (`Cascade Robot Amps`, see [Measuring the real currents](#measuring-the-real-currents)).
 
 > **Status:** so far this has only been tested on a computer simulation of the
 > robot, not on the real robot. Go through [Before the first real run](#before-the-first-real-run)
@@ -27,6 +32,7 @@ There are two programs:
 - [Ports](#ports)
 - [Drive program](#drive-program)
 - [Drive v2](#drive-v2)
+- [Measuring the real currents](#measuring-the-real-currents)
 - [Motor test program](#motor-test-program)
 - [How the program is laid out](#how-the-program-is-laid-out)
 - [Common edits](#common-edits)
@@ -59,6 +65,8 @@ There are two programs:
 | `cascade_robot_drive.py` | Drive v1 as a plain Python file. |
 | `Cascade Robot Drive V2.v5python` | **Drive v2.** Open this in VEXcode. Softer sticks, strain sensing, a software floor on the cascade. |
 | `cascade_robot_drive_v2.py` | Drive v2 as a plain Python file. |
+| `Cascade Robot Amps.v5python` | **Amps measuring tool.** Open this in VEXcode. Reads what each mechanism really draws, so the thresholds stop being guesses. |
+| `cascade_robot_amps.py` | The amps tool as a plain Python file. |
 | `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
 | `TESTING_SAFETY.md` | Read this before the first run of anything. |
@@ -76,8 +84,10 @@ There are two programs:
    - `Cascade Robot Auton.v5python` — the match program: driver control plus a
      PID autonomous.
    - `Cascade Robot Test.v5python` — the motor test, for checking wiring.
+   - `Cascade Robot Amps.v5python` — the amps measuring tool. Not a driving
+     program: it spins one mechanism at a time and shows you what it draws.
 2. Plug in the brain (or the controller, with the brain paired), pick a slot and press **Download**.
-   Put each program in a different slot, so all four are on the brain.
+   Put each program in a different slot, so all five are on the brain.
 3. Before starting the **match program**:
    - The **cascade must be all the way down.** The program counts "0 degrees" from wherever the lift is at startup.
    - If an inertial sensor is set up, **don't touch the robot** while the screen says "Calibrating" (about 2 seconds).
@@ -244,19 +254,35 @@ It also **creeps onto the floor instead of stopping a step above it.** Within
 `CASCADE_SPEED` and is asked for `CASCADE_CREEP_SPEED` (10) instead, which gives
 the ramp the whole last stretch to bring it down. At the limit itself the
 command goes **hard to zero** — the ramp is there to make driving smooth, not to
-soften a limit — and the brain screen says `FLOOR`. The ramp's own value is
-deliberately left alone at that moment: zeroing it too would make the ramp start
-over from nothing on the next loop and nudge the arm down again, which is a
-stutter at the floor for no benefit.
+soften a limit — and the brain screen says `FLOOR`.
+
+At that moment the ramp's own value is pinned to `CASCADE_CREEP_SPEED` rather
+than left wherever it was. Leaving it alone let the arm set off again from the
+floor at whatever number the ramp happened to be holding, which is a jump bigger
+than a crawl; zeroing it made the ramp start over from nothing and nudge the arm
+down again, which is a stutter you can see. Pinning it makes the crawl the
+ceiling from here, so restarting is bounded by design.
+
+**How far the arm moves in one pass is measured, not assumed.** The floor check
+has to predict where the arm will be after the command it is about to send, and
+that prediction is a distance per loop. It used to be a fixed
+`CASCADE_DEG_PER_LOOP` = 12°, worked out from the gearbox. That is only right if
+every pass round the loop really takes 20 ms — and a pass now reads the
+position, asks the guard, reads the velocity and the current, and draws the
+screen. So the program times each pass itself with `brain.timer.time(MSEC)`,
+turns that into degrees with `CASCADE_DEG_PER_SECOND` (600°/s, the output speed
+of a red 36:1 cartridge — double it for green, ×6 for blue), and multiplies by
+`CASCADE_SAFETY_FACTOR` (1.5) to allow for the arm still moving while the
+program decides. A reading shorter than 20 ms is treated as exactly 20 ms,
+because under-estimating the time under-estimates the travel, and that is the
+unsafe direction to be wrong in. The bench test shows what a difference it
+makes: with the loop three times too slow the arm really moved 14.4° in a pass,
+and the old fixed 12° sum would have driven it **1.79° past the limit**.
 
 The result is that the arm rests within about a degree of the limit instead of a
 full-speed step above it. The exact distance is however far the arm travels in
-one loop at `CASCADE_CREEP_SPEED`, so raising the creep speed to get more torque
+one pass at `CASCADE_CREEP_SPEED`, so raising the creep speed to get more torque
 also means resting slightly further from the limit.
-
-**The claw grips and stops squeezing.** It has a permanent ceiling of
-`CLAW_HOLD_AMPS` (1.2 A), and once it has been straining it eases its closing
-speed, so it holds an object without cooking the motor.
 
 The toggle is deliberately the exception: it gets the ramp like everything
 else, but no stick curve and no strain easing.
@@ -265,6 +291,77 @@ else, but no stick curve and no strain easing.
 > and `cascade_robot_drive_v2.py` is v2. Neither replaces the other. The v1
 > backup also exists as the git tag `v1-drive-working-40` and as a folder in
 > `versions/v1-drive-working-40/`.
+
+## Measuring the real currents
+
+Every current number in this folder was picked by hand. `CASCADE_STRAIN_AMPS`,
+`CASCADE_EASE_AMPS`, `TORQUE_FULL_AMPS`, `CLAW_STRAIN_AMPS` and
+`CLAW_HOLD_AMPS` are all somebody's guess at what this robot draws. They are
+probably in the right region and they are certainly not measurements, and no
+amount of reading the code can fix that — the only way to know is to watch the
+motor.
+
+**`Cascade Robot Amps.v5python`** (`cascade_robot_amps.py`) is that watch. It is
+a measuring tool, not a driving program: **nothing in it drives the robot.**
+
+1. Put the robot **on a stand**, wheels off the floor.
+2. Open `Cascade Robot Amps.v5python`, download it, press Run.
+3. Hold one button for the whole test:
+   - **A** — cascade, lifting up
+   - **B** — claw, closing
+   - **X** — toggle, turning
+   - **Y** — drive, forwards
+4. While it runs, **load the mechanism by hand**: press down on the arm as it
+   lifts, let the claw close on nothing and then put a game element in it, hold
+   the toggle back, hold the robot back on the drive test. The `now` reading
+   climbs as you do.
+5. **Let go** and the motor stops at once — a measuring tool should never keep
+   pushing once your hand has come off. Read the **PEAK** off the screen and
+   write it down. `steady` is what it settles at once the motor has spun up.
+
+One press is one test, and it runs for a few seconds. The idle screen keeps a
+table of the peaks so far, so you can work through all four without a pen.
+
+**Two warnings, both deliberate.** There is **no torque ceiling** in this
+program: a ceiling is a clamp, and once a motor hits it the reading stops
+climbing, so "working hard" can no longer be told from "about to stall" — the
+whole number you came for would be hidden. That is also why the tests are short.
+And **never wedge a mechanism so hard that the motor truly cannot turn, then
+walk away.** V5 motors have their own internal protection, but the point of this
+tool is to feel the load through your hand, not to test the motor's limits.
+
+### Reading the numbers
+
+The figure on the screen is **everything that test drives, added up**, because
+`MotorGroup.current()` sums its motors (while `set_max_torque()` applies to each
+one). So:
+
+- The **cascade** reading is a **pair total**. `CASCADE_STRAIN_AMPS` (2.0) is
+  written as a pair total too, so it compares directly — but
+  `CASCADE_EASE_AMPS` (1.0) is **per motor**, so compare it with the number in
+  brackets.
+- The **claw** reading is one motor, so it compares directly with
+  `CLAW_HOLD_AMPS`.
+- The **drive** reading is all four wheels together, which is why it is the
+  least useful one — watch the two sides instead if you ever need to.
+
+That is why the screen shows the per-motor figure in brackets as well
+(`0.70 A (0.35 each)`). Both are true; they just answer different questions.
+
+Once you have the numbers: a threshold should sit **above** the worst peak the
+mechanism hits on purpose and **below** what it draws when something is wrong.
+If a peak you measured is already at or over the threshold in the program, the
+threshold is too low and the mechanism will be eased off while it is working
+normally — raise it. If the peak is far under, the threshold is doing nothing —
+lower it until it is just above. Write the numbers in the comments next to the
+constants so the next person knows where they came from.
+
+> The encoder check in v2 needs no measuring, on purpose. Its numbers are
+> **fractions of the command** rather than amps — "moving at under a quarter of
+> what it was asked for" — so they mean the same thing on any motor. That is the
+> advantage of measuring a mechanism against itself. It is also the reason the
+> encoder half exists at all: an amp threshold is only as good as the number
+> somebody guessed, and the fraction is not a guess.
 
 ## Motor test program
 
@@ -572,7 +669,8 @@ about 2 seconds while it calibrates at startup.
 
 VEXcode edits the `.v5python` files. GitHub shows the `.py` files. After
 changing one, copy the change into the other before committing. Each
-command does both programs:
+command does all five programs (match, motor test, drive v1, drive v2 and the
+amps tool):
 
 ```bash
 python3 sync_files.py from-vexcode   # you edited and saved in VEXcode
@@ -613,10 +711,13 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
   exactly 5 times (1800°) and read H. If it isn't about 1800, set
   new width = old width × shown / 1800. Skip this if you have an inertial sensor.
 - [ ] **Cascade cartridge.** It's set to red (`RATIO_36_1`) from the design
-  doc. Check it, because a wrong cartridge makes all the heights wrong.
+  doc. Check it, because a wrong cartridge makes all the heights wrong — and in
+  **v2** it also sets `CASCADE_DEG_PER_SECOND` (600 for red, 1200 for green,
+  3600 for blue), which is how v2 works out how far the arm moves in one pass.
 - [ ] **Cascade presets and toggle angles.** These are placeholders. See [above](#set-the-cascade-heights-and-toggle-angles).
 - [ ] **Motor test program.** Check every motor's port and direction. See [Motor test program](#motor-test-program).
 - [ ] **Drive v2, on blocks.** Its ramp, stick curve, strain easing and cascade floor have never run on the real robot. Read [Testing safely](TESTING_SAFETY.md) and work through its list. Start with the arm **down**, because that is where the program learns "the bottom" from.
+- [ ] **Measure the real currents.** Run the amps tool and write down what each mechanism actually draws, so v2's thresholds stop being guesses. See [Measuring the real currents](#measuring-the-real-currents).
 - [ ] **Port 9.** Check the brain's Devices screen to see what's plugged in there.
 - [ ] **Tune the PID** with `pid_test`.
 
@@ -640,6 +741,9 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
 | Drive v2's sticks feel too soft | Raise `FINE_TOP` towards `1.0` and lower `STICK_EXPO` towards `1.0`. See [Why drive v2 feels the way it does](CONTROL_FEEL.md). |
 | Drive v2 eases the cascade down even when it is moving freely | `CASCADE_STRAIN_AMPS` is too low for this arm. Raise it. |
 | Drive v2 says `BLOCKED` on a mechanism that is plainly moving | `BLOCKED_FRACTION` is too high for this motor, or `BLOCKED_LOOPS` is too short. Raise the fraction, lengthen the loop count, or set `USE_VELOCITY_CHECK = False` to go back to amps only. |
+| Amps tool shows a peak at or over a threshold in v2 | The threshold is too low for this robot — v2 will ease the mechanism off while it is working normally. Raise the threshold just above the peak you measured. |
+| Amps tool shows `0.00 A` while a motor is clearly turning | You are reading the wrong group, or the cable is loose. Run the motor test program first. |
+| Amps tool shows a huge peak then the mechanism eases | You loaded it harder than the mechanism ever will be in a match. The useful number is the peak from a *normal* load, not from holding the arm still. |
 | Drive v2 no longer eases off a mechanism that has stalled | Check `USE_VELOCITY_CHECK` is `True`. If it is, the motor is still turning faster than 25% of what was asked, so raise `BLOCKED_FRACTION`. |
 
 ## How this matches the C++ code
@@ -682,6 +786,9 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Speeds raised to **40** across the board — 10 was too slow for the motors to move the robot. |
 | 2026-10-08 | **Version 1 frozen as the backup.** Working version tagged `v1-drive-working-40` (commit `67304de` on GitHub) and copied to `versions/v1-drive-working-40/` in the Desktop folder, with a note on how to restore it. |
 | 2026-10-08 | Added **drive v2**: `cascade_robot_drive_v2.py` / `Cascade Robot Drive V2.v5python`. A two-zone stick curve, per-control rate limiting, strain sensing with torque caps on the cascade and the claw, and a software floor so the cascade cannot be driven below where it started. v1 itself was not touched. Added [Why drive v2 feels the way it does](CONTROL_FEEL.md) and [Testing safely](TESTING_SAFETY.md). |
-| 2026-10-08 | **v2's cascade now creeps onto its floor.** Coming down at `CASCADE_SPEED` it used to stop up to a full step above `CASCADE_LOWER_LIMIT`; within `CASCADE_CREEP_BAND` (25°) it is asked for `CASCADE_CREEP_SPEED` (10) instead, so it rests within about a degree of the limit. The ramp's own value is no longer zeroed at the floor, which removes a small stutter there. |
+| 2026-10-08 | **v2's cascade now creeps onto its floor.** Coming down at `CASCADE_SPEED` it used to stop up to a full step above `CASCADE_LOWER_LIMIT`; within `CASCADE_CREEP_BAND` (25°) it is asked for `CASCADE_CREEP_SPEED` (10) instead, so it rests within about a degree of the limit. The ramp's own value is no longer zeroed at the floor, which removes a small stutter there. (That last part was refined again later — see the row about pinning the ramp.) |
 | 2026-10-08 | **The same stick feel ported to the PROS C++.** New `include/control_feel.hpp` holds the deadband, the two-zone curve, the slew rate limiter and the split arcade mix; `DriveBase::manual_control` now shapes the sticks, so the old `turn * 0.7` fudge is gone. The settings live in `config.drive` in `src/main.cpp`. |
 | 2026-10-08 | **v2 watches the encoder as well as the amps.** The strain guard now eases off a mechanism that has been told to move and is not moving, even when it is drawing a perfectly ordinary current — the case an amp threshold cannot see. New `USE_VELOCITY_CHECK`, `BLOCKED_FRACTION`, `BLOCKED_LOOPS` and `BLOCKED_MIN_ASK`; the brain screen shows `vel` and prints `BLOCKED` when that is what triggered it. |
+| 2026-10-08 | **v2's floor now measures how long each pass takes** instead of assuming 20 ms. The fixed `CASCADE_DEG_PER_LOOP` (12°) is gone; `brain.timer.time(MSEC)` feeds `loop_seconds()` and `cascade_travel()`, with `CASCADE_DEG_PER_SECOND` (600) and `CASCADE_SAFETY_FACTOR` (1.5). A pass that takes longer than 20 ms used to under-predict the arm's travel, which is the direction that could put it through the floor. The bench test now proves it: with the loop made three times too slow, the old arithmetic drives the arm **1.79° below** the limit while the new code stops above it. |
+| 2026-10-08 | **v2 pins the ramp at the floor** to `CASCADE_CREEP_SPEED` instead of leaving it at whatever it held. That makes a restart from the floor a crawl by design; leaving it alone had allowed a bigger jump, and zeroing it had caused a stutter. |
+| 2026-10-08 | Added the **amps measuring tool**: `cascade_robot_amps.py` / `Cascade Robot Amps.v5python`. Hold A/B/X/Y and it shows what each mechanism really draws (`now` / `peak` / `steady`, plus the per-motor figure in brackets), so the v2 thresholds can stop being guesses. No torque ceiling, on purpose — a ceiling would clamp the very number you are reading. `sync_files.py` now handles five programs. |

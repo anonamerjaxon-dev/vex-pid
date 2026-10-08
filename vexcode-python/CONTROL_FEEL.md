@@ -219,6 +219,20 @@ time you feel the robot. If the easing never comes on, `CASCADE_STRAIN_AMPS`
 is too high. If it comes on while the arm is moving freely,
 it is too low.
 
+The way out of the guessing is the **amps tool**
+(`cascade_robot_amps.py` / `Cascade Robot Amps.v5python`). It spins one
+mechanism at a time and shows what it really draws, with no torque ceiling on
+purpose - a ceiling is a clamp, and once a motor hits it the reading stops
+climbing. Hold a button, load the mechanism by hand, and read the peak off the
+screen. Then put that number in the constants: a measured figure cannot be
+worse than the one that is there now.
+[Measuring the real currents](README.md#measuring-the-real-currents) has the
+full instructions, including the one trap worth repeating here: a group's
+`current()` adds its motors **up** while `set_max_torque()` applies to **each**
+one, so the cascade reading is a pair total, and `CASCADE_EASE_AMPS` - which is
+per motor - has to be compared with the per-motor figure the tool shows in
+brackets beside it.
+
 The encoder half exists partly because of that uncertainty. Its numbers are
 fractions of a command rather than amps, which is a far easier thing to guess
 correctly, so it catches the case the amp threshold gets wrong. Between them,

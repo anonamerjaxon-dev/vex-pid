@@ -37,6 +37,18 @@ src/motion_detect.h   Pattern detection engine — portable C++, no Arduino deps
 test/test_motion.cpp  Host test harness (10 scenarios, 38 assertions)
 
 VEX_2026_2027_RESEARCH.md   Design notes: hardware, encoder math, PID tuning
+
+vexcode-python/     The same robot in VEXcode V5 Python (the team's handout)
+  cascade_robot_auton.py      Match program: driver control + PID autonomous
+  cascade_robot_test.py       Motor test — one button per motor, for wiring
+  cascade_robot_drive.py      Drive v1, the known-good backup
+  cascade_robot_drive_v2.py   Drive v2 — stick feel, strain sensing, soft floor
+  cascade_robot_amps.py       Amps measuring tool — what each mechanism really draws
+  *.v5python                  The files VEXcode opens (same programs)
+  sync_files.py               Copies each .py into its .v5python
+  README.md                   The handout: controls, ports, edits, troubleshooting
+  TESTING_SAFETY.md           Read before the first run of anything
+  CONTROL_FEEL.md             Why drive v2 feels the way it does
 ```
 
 ---
@@ -151,6 +163,17 @@ The throttle and the turn stick go through the **same** curve and the same
 limiter. Only the ceiling is separate (`drive_speed_max` and `turn_speed_max`,
 both 51 = 40% of 127), so turning can be made slower than driving without
 touching the shape. All the numbers live in `config.drive` in `src/main.cpp`.
+
+The Python **drive v2** goes further than this port does. It also watches each
+mechanism's current *and* its encoder, eases a mechanism that is being held back,
+caps the claw's torque, and keeps the cascade above a software floor — and it
+times each pass round the loop rather than assuming 20 ms, so the floor's
+prediction of where the arm will be still holds when the brain is busy. The C++
+side here is the stick feel only. Two Python files back it up:
+`vexcode-python/TESTING_SAFETY.md`, for testing it without breaking the robot,
+and `vexcode-python/cascade_robot_amps.py`, a measuring tool that reports what
+each mechanism really draws — worth running before trusting any of v2's current
+thresholds, because every one of them was picked by hand.
 
 ### Autonomous
 

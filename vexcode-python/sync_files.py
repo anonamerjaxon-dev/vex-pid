@@ -8,7 +8,8 @@
 # program stored inside it as one string ("textContent"), so GitHub can't
 # show it nicely - that's why there's also a plain .py copy.
 #
-# Each command does all four programs (match, motor test, drive and drive v2).
+# Each command does all five programs (match, motor test, drive, drive v2 and
+# the amps measuring tool).
 # This runs on your computer, not on the robot.
 
 import json
@@ -21,6 +22,7 @@ PROGRAMS = [
     ("cascade_robot_test.py", "Cascade Robot Test.v5python"),
     ("cascade_robot_drive.py", "Cascade Robot Drive.v5python"),
     ("cascade_robot_drive_v2.py", "Cascade Robot Drive V2.v5python"),
+    ("cascade_robot_amps.py", "Cascade Robot Amps.v5python"),
 ]
 
 

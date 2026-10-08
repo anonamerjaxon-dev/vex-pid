@@ -113,11 +113,21 @@ CASCADE_LOWER_LIMIT = -2.0    # degrees
 CASCADE_DOWN_SIGN = -1        # L2 (down) makes the number go down. If you
                               # hold L2 and the number on the screen goes UP,
                               # change this to +1.
-CASCADE_DEG_PER_LOOP = 12.0   # a red (36:1) motor is 100 RPM, which is 600
-                              # degrees per second, which is 12 degrees in one
-                              # 20 ms loop. Used to stop the arm one loop
-                              # before its limit instead of letting it coast
-                              # past. Change it if you change CASCADE_GEARS.
+CASCADE_DEG_PER_SECOND = 600.0  # a red (36:1) motor turns at 100 RPM, which is
+                              # 600 degrees of its output every second at its
+                              # own top speed. Used to work out how far the arm
+                              # will travel before the program next looks at
+                              # it, so it can be stopped at the limit instead
+                              # of coasting past. Change this if you change
+                              # CASCADE_GEARS: green (18:1) is 1200 and blue
+                              # (6:1) is 3600.
+CASCADE_SAFETY_FACTOR = 1.5   # Assume the arm might travel this much further
+                              # than the sum says. The program reads the
+                              # position, then sends the command, then waits -
+                              # and the arm keeps moving through all of that,
+                              # so a straight calculation would always be a
+                              # little optimistic. Bigger means the arm stops
+                              # further from the limit.
 CASCADE_CREEP_BAND = 25.0     # degrees above the limit where the arm stops
                               # coming down fast and starts creeping instead,
                               # so it can rest right on the limit rather than a
@@ -279,6 +289,33 @@ def ramp_towards(current, target, step):
     if target < current - step:
         return current - step
     return target
+
+def loop_seconds(now_ms, last_ms):
+    # How long the last pass around the driver loop took, in seconds.
+    #
+    # This used to be assumed: "the loop is 20 ms, so the arm turns 12
+    # degrees". That is only true if the loop really is 20 ms, and the V5
+    # makes no such promise - every device read in the loop costs time, and
+    # the busier the brain is the longer a pass takes. If a pass takes 60 ms
+    # the arm travels three times as far as that sum says, which is exactly
+    # the situation where a soft limit gets walked straight through.
+    #
+    # So measure it instead. A short reading is never believed - anything
+    # below one loop is rounded up - because under-estimating the time
+    # under-estimates the travel, and that is the unsafe direction to be
+    # wrong in.
+    if last_ms is None:
+        elapsed = LOOP_MS
+    else:
+        elapsed = now_ms - last_ms
+        if elapsed < LOOP_MS:
+            elapsed = LOOP_MS
+    return (elapsed / 1000.0) * CASCADE_SAFETY_FACTOR
+
+def cascade_travel(speed_percent, dt_seconds):
+    # How many degrees the arm should turn before the program next looks at
+    # it: at this speed, over this much time.
+    return CASCADE_DEG_PER_SECOND * (speed_percent / 100.0) * dt_seconds
 
 def arcade(forward, turn):
     # Split arcade: the left side gets forward + turn and the right side
@@ -497,8 +534,16 @@ def driver():
 
     shown = None
     loops = 0
+    last_loop_ms = None   # measured from brain.timer, never assumed
 
     while True:
+        # How long the last pass around this loop took. Measured, not assumed
+        # - see loop_seconds(). brain.timer is the brain's own clock, so this
+        # costs no device traffic and does not itself slow the loop down.
+        now_ms = brain.timer.time(MSEC)
+        dt_seconds = loop_seconds(now_ms, last_loop_ms)
+        last_loop_ms = now_ms
+
         # --- Split arcade drive -------------------------------------------
         forward = stick_shape(controller_1.axis3.position(), DRIVE_SPEED)
         turn = stick_shape(controller_1.axis1.position(), TURN_SPEED)
@@ -543,7 +588,11 @@ def driver():
         # The limit is checked against the command we are ABOUT to send, not
         # the last one, because the ramp may have just made that command
         # bigger than the loop before.
-        next_position = cascade_position + (ramped_cascade / 100.0) * CASCADE_DEG_PER_LOOP
+        #
+        # The travel is worked out from the measured loop time rather than an
+        # assumed 20 ms - see loop_seconds(). That is what stops a slow loop
+        # from stepping the arm straight through the limit.
+        next_position = cascade_position + cascade_travel(ramped_cascade, dt_seconds)
 
         at_floor = (ramped_cascade * CASCADE_DOWN_SIGN > 0
                     and next_position <= CASCADE_LOWER_LIMIT)
@@ -554,18 +603,23 @@ def driver():
         # what makes "the floor" mean within about a degree of the limit
         # instead of a whole fast step above it.
         #
-        # The ramp's own value is deliberately left alone. Zeroing it as well
-        # would make the ramp start over from nothing on the next loop and
-        # nudge the arm down again - a little stutter at the floor for no
-        # benefit.
-        send_cascade = 0.0 if at_floor else ramped_cascade
-
+        # The ramp itself is brought straight down to the crawl rather than to
+        # nothing. Zeroing it would make the ramp start over from nothing on
+        # the next loop and nudge the arm down again; leaving it alone would
+        # let the arm set off again at whatever number the ramp happened to be
+        # holding when the floor stopped it, which can be a lot bigger than a
+        # crawl. The crawl is the most the arm is ever allowed from here, so
+        # the ramp is put there now and the next move can only ever be a crawl.
         if at_floor:
+            send_cascade = 0.0
+            ramped_cascade = CASCADE_CREEP_SPEED * CASCADE_DOWN_SIGN
             # Being stopped on purpose is not a mechanism in trouble, so the
             # guard is told not to read this as "asked to move and did not" -
             # otherwise sitting on the floor with the button held would slowly
             # ease the arm for no reason.
             cascade_guard.clear_block()
+        else:
+            send_cascade = ramped_cascade
 
         cascade_moving = run_group(cascade, send_cascade, cascade_moving)
 

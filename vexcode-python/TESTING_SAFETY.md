@@ -10,6 +10,10 @@ Be honest with yourself about where things stand:
   easing, its torque limits and its software floor are all new. They were
   tested against a pretend motor on the laptop, which proves the *logic* is
   right - it proves nothing about how the real hardware feels.
+- **The current numbers are guesses.** `CASCADE_STRAIN_AMPS`,
+  `CASCADE_EASE_AMPS`, `TORQUE_FULL_AMPS`, `CLAW_STRAIN_AMPS` and
+  `CLAW_HOLD_AMPS` were all picked by hand. Nobody has measured what this robot
+  draws. Run the amps tool (below) before you rely on any of them.
 
 So treat the first v2 run as a first run, not as a formality.
 
@@ -73,18 +77,43 @@ bottom" is (`cascade.reset_position()` on startup).
   `CLAW_HOLD_AMPS`. Lower it to grip more gently, raise it to grip harder.
   `CLAW_STRAIN_AMPS` is the point where it decides it is holding something.
 
+## Measure the currents first
+
+Every current number in v2 was picked by hand, so run
+`Cascade Robot Amps.v5python` on the bench before you trust one. It is a
+measuring tool, not a driving program: hold a button and it spins one mechanism
+at a time and shows what it really draws. The full instructions are in
+[Measuring the real currents](README.md#measuring-the-real-currents).
+
+It has **no torque ceiling, on purpose** - a ceiling is a clamp, and once a
+motor hits it the reading stops climbing, which would hide the very number you
+came for. That is also why each test is only a few seconds. Two things to keep
+safe while you use it:
+
+- keep the runs short (the program does this for you) and let the motor rest
+  between them;
+- never wedge a mechanism so hard that the motor truly cannot turn, then walk
+  away. Load it with your hand until the reading climbs, then let go - the
+  motor stops the moment you release the button.
+
+If a peak you measure is already at or above one of v2's thresholds, that
+threshold is too low and v2 will ease the mechanism off while it is working
+normally. Raise it just above the peak you saw.
+
 ## The order to test in
 
-1. On blocks: does the drive go forwards when you push the stick forwards?
-2. On blocks: does it turn the way you expect?
-3. On blocks: claw open and close, then grip a soft object and watch that it
+1. On blocks, with the amps tool: measure what each mechanism really draws, and
+   fix any threshold that is below the peak you saw.
+2. On blocks: does the drive go forwards when you push the stick forwards?
+3. On blocks: does it turn the way you expect?
+4. On blocks: claw open and close, then grip a soft object and watch that it
    holds without the motor getting hot.
-4. On blocks: toggle up and down.
-5. On blocks: drive the arm all the way down with L2 and confirm it stops
+5. On blocks: toggle up and down.
+6. On blocks: drive the arm all the way down with L2 and confirm it stops
    with `FLOOR` on the screen and does **not** climb past its start.
-6. On blocks: hold L1 against something (a hand on the arm is enough) and
+7. On blocks: hold L1 against something (a hand on the arm is enough) and
    confirm the speed eases and the arm does not fight you.
-7. On the floor, at 40, in a clear space. Then start raising numbers.
+8. On the floor, at 40, in a clear space. Then start raising numbers.
 
 Write down what you saw after each step. If it is not in a note, it did not
 happen.

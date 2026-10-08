@@ -118,6 +118,7 @@ toggle = MotorGroup(toggle_18, toggle_8)
 
 # Claw: on the long 1500mm cable
 claw_16 = Motor(Ports.PORT16, CLAW_GEARS, False)
+claw = MotorGroup(claw_16)     # one motor, but the driver code talks to it as "claw"
 
 # Port 6 is a communication device, not a motor. Ignore it.
 # Port 9: a single device nobody has identified yet. Not used.

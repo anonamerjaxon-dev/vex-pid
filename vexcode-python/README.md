@@ -146,12 +146,10 @@ side for more than 100%, both sides are scaled down together instead of one
 side being clipped, so the turn keeps its shape. A small **deadband** (`5`)
 ignores tiny stick movements so the robot does not creep.
 
-**Everything starts at 10.** `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED`,
-`CLAW_SPEED` and `TOGGLE_SPEED` are all **10**, so full stick means 10% power.
-That is crawling pace on purpose: this first run is to prove each part moves the
-right way and that nothing crashes. If a part cannot move at all at 10, that is
-normal — 10% is not much torque — and the fix is to raise just that one number,
-about 10 at a time.
+**Everything starts at 40.** `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED`,
+`CLAW_SPEED` and `TOGGLE_SPEED` are all **40**, so full stick means 40% power,
+not 100%. That is about half throttle: enough for every part to actually move,
+slow enough to stop before anything breaks. Raise them about 10 at a time.
 
 It also reads the drive a little differently from the match program: the
 cascade and the toggle are plain `MotorGroup`s, so both motors of a pair just
@@ -348,9 +346,9 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
 ### Change driver speeds or buttons
 
 - **Speeds:** `CASCADE_SPEED`, `CLAW_SPEED` and `TOGGLE_SPEED` in Settings, in percent.
-- **Drive and turn speed (drive program):** all five speeds start at **10**
+- **Drive and turn speed (drive program):** all five speeds start at **40**
   (`DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED`, `CLAW_SPEED`, `TOGGLE_SPEED`), so
-  full stick gives 10% power and not 100%. `DRIVE_SPEED` is also a hard cap: no
+  full stick gives 40% power and not 100%. `DRIVE_SPEED` is also a hard cap: no
   wheel can be asked for more than it, even when you drive and turn hard at the
   same time. Raise the numbers about 10 at a time.
 - **Joystick deadzone:** `DEADBAND`. Raise it if the robot creeps when the sticks are let go.
@@ -569,3 +567,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | **Slowed the drive program right down.** It was capped at 100% (`DRIVE_SPEED` / `TURN_SPEED`), much faster than the motor test's 40%. Everything is now 40% (`CLAW_SPEED` 30), so full stick means 40% power. |
 | 2026-10-08 | Cascade slowed to **25** (`CASCADE_SPEED`): at 40 the arm was still too quick. Drive, turn and toggle stay at 40, claw at 30. |
 | 2026-10-08 | **All five speeds set to 10** for the first real test on the floor: `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED`, `CLAW_SPEED`, `TOGGLE_SPEED`. Full stick now means 10% power. |
+| 2026-10-08 | Speeds raised to **40** across the board — 10 was too slow for the motors to move the robot. |

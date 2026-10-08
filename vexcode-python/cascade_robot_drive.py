@@ -79,19 +79,16 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 # The drive sticks already scale themselves from 0 to 100, so these are
 # a ceiling - the stick goes from nothing up to this number, never past it.
 #
-# EVERYTHING IS 10 FOR THE FIRST DRIVE. That is crawling pace on purpose:
-# the job of this first run is to check that each part moves the right way
-# and that nothing crashes, not to drive properly.
+# EVERYTHING IS 40 - about half throttle. Fast enough that every part
+# actually moves, slow enough to stop before anything breaks.
 #
-# If a part will not move at all at 10, that is normal - 10% is not much
-# torque - and the fix is to raise just that one number. Raise them about
-# 10 at a time as you get comfortable. DRIVE_SPEED and TURN_SPEED are the
-# two that matter most for driving.
-DRIVE_SPEED = 10
-TURN_SPEED = 10
-CASCADE_SPEED = 10
-CLAW_SPEED = 10
-TOGGLE_SPEED = 10
+# Raise them about 10 at a time as you get comfortable. DRIVE_SPEED and
+# TURN_SPEED are the two that matter most for driving.
+DRIVE_SPEED = 40
+TURN_SPEED = 40
+CASCADE_SPEED = 40
+CLAW_SPEED = 40
+TOGGLE_SPEED = 40
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5

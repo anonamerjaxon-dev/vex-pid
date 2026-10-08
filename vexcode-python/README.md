@@ -26,6 +26,7 @@ There are two programs:
 - [Controls](#controls)
 - [Ports](#ports)
 - [Drive program](#drive-program)
+- [Drive v2](#drive-v2)
 - [Motor test program](#motor-test-program)
 - [How the program is laid out](#how-the-program-is-laid-out)
 - [Common edits](#common-edits)
@@ -41,6 +42,8 @@ There are two programs:
 - [Rules for editing VEXcode Python](#rules-for-editing-vexcode-python)
 - [Before the first real run](#before-the-first-real-run)
 - [Troubleshooting](#troubleshooting)
+- [Testing safely](TESTING_SAFETY.md) - read this before the first run
+- [Why drive v2 feels the way it does](CONTROL_FEEL.md)
 - [How this matches the C++ code](#how-this-matches-the-c-code)
 - [Change log](#change-log)
 
@@ -52,21 +55,29 @@ There are two programs:
 | `cascade_robot_auton.py` | The match program as a plain Python file, so it can be read and reviewed on GitHub. |
 | `Cascade Robot Test.v5python` | **Motor test program.** Open this in VEXcode. |
 | `cascade_robot_test.py` | The motor test program as a plain Python file. |
-| `Cascade Robot Drive.v5python` | **Drive program (no PID).** Open this in VEXcode. |
-| `cascade_robot_drive.py` | The drive program as a plain Python file. |
+| `Cascade Robot Drive.v5python` | **Drive v1 (no PID).** Open this in VEXcode. The known-good version. |
+| `cascade_robot_drive.py` | Drive v1 as a plain Python file. |
+| `Cascade Robot Drive V2.v5python` | **Drive v2.** Open this in VEXcode. Softer sticks, strain sensing, a software floor on the cascade. |
+| `cascade_robot_drive_v2.py` | Drive v2 as a plain Python file. |
 | `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
+| `TESTING_SAFETY.md` | Read this before the first run of anything. |
+| `CONTROL_FEEL.md` | Why drive v2 feels the way it does: the research, and what each constant does. |
 
 ## Putting it on the robot
 
 1. Open **VEXcode V5**, then **File → Open** and pick a program:
-   - `Cascade Robot Drive.v5python` — the plain drive program. No PID, nothing to
-     calibrate, so **start here**.
+   - `Cascade Robot Drive.v5python` — **drive v1**. No PID, nothing to calibrate.
+     This is the version that has already been driven on the robot.
+   - `Cascade Robot Drive V2.v5python` — **drive v2**. Softer sticks, a cascade
+     that feels its own strain, and a software floor so the arm cannot be driven
+     past where it started. **This one has not been on the robot yet** — read
+     [Testing safely](TESTING_SAFETY.md) first.
    - `Cascade Robot Auton.v5python` — the match program: driver control plus a
      PID autonomous.
    - `Cascade Robot Test.v5python` — the motor test, for checking wiring.
 2. Plug in the brain (or the controller, with the brain paired), pick a slot and press **Download**.
-   Put each program in a different slot, so all three are on the brain.
+   Put each program in a different slot, so all four are on the brain.
 3. Before starting the **match program**:
    - The **cascade must be all the way down.** The program counts "0 degrees" from wherever the lift is at startup.
    - If an inertial sensor is set up, **don't touch the robot** while the screen says "Calibrating" (about 2 seconds).
@@ -166,6 +177,54 @@ short version.
 > `Cascade_Robot_Drive` and `Cascade_Robot_Test`, and both hold a copy. Put
 > whichever program you want to run into that file - it is a plain copy of
 > the `.py`.
+
+## Drive v2
+
+`cascade_robot_drive_v2.py` does everything v1 does — same ports, same
+directions, same buttons — and adds three things the driver can feel. The long
+version, with the research behind it, is in
+[Why drive v2 feels the way it does](CONTROL_FEEL.md); this is the summary.
+
+**The sticks have two speeds in one.** The first 85% of the stick travel is a
+**fine zone**: it only reaches 40% of `DRIVE_SPEED`, and it is bent so that the
+middle is especially gentle — half stick asks for about a quarter of the power.
+The last 15% of the travel spends the rest, so the full speed you set only
+happens **at the stop**. The two halves meet exactly, so there is no step where
+they join. `stick_shape()` is the function; `FINE_END`, `FINE_TOP` and
+`STICK_EXPO` are the knobs.
+
+**Nothing can jump.** Every output — both sticks, the cascade, the claw, the
+toggle — is **rate limited**: it can only change by `RAMP_PER_LOOP` (5) per
+20 ms loop, so a motor takes about 0.4 s to go from stopped to full. Each
+control has its own ramp value, because sharing one would make turning fight
+driving. This is the same idea as WPILib's *slew rate limiter*; why it is not a
+smoothing filter is in CONTROL_FEEL.md.
+
+**The cascade watches its own current.** `class StrainGuard` reads
+`current(CurrentUnits.AMP)`. If the arm pulls more than `CASCADE_STRAIN_AMPS`
+(2.0 A, both motors added together) for three loops in a row, the program eases
+the speed down towards 35% and drops the torque ceiling to 1.0 A, then recovers
+gently when the strain goes away. The mechanism is
+`set_max_torque(amps, CurrentUnits.AMP)`.
+
+**The cascade cannot be driven past where it started.** The arm has no physical
+stop and the worry is the chain coming off the bottom, so the program remembers
+where the arm was at startup (`cascade.reset_position()`) and refuses to send a
+command that would take it more than `CASCADE_LOWER_LIMIT` degrees below that.
+At the floor it stops **hard** — the ramp is there to make driving smooth, not
+to soften a limit — and the brain screen says `FLOOR`.
+
+**The claw grips and stops squeezing.** It has a permanent ceiling of
+`CLAW_HOLD_AMPS` (1.2 A), and once it has been straining it eases its closing
+speed, so it holds an object without cooking the motor.
+
+The toggle is deliberately the exception: it gets the ramp like everything
+else, but no stick curve and no strain easing.
+
+> **v1 and v2 live side by side.** `cascade_robot_drive.py` is v1, unchanged,
+> and `cascade_robot_drive_v2.py` is v2. Neither replaces the other. The v1
+> backup also exists as the git tag `v1-drive-working-40` and as a folder in
+> `versions/v1-drive-working-40/`.
 
 ## Motor test program
 
@@ -351,6 +410,11 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
   full stick gives 40% power and not 100%. `DRIVE_SPEED` is also a hard cap: no
   wheel can be asked for more than it, even when you drive and turn hard at the
   same time. Raise the numbers about 10 at a time.
+- **How v2 responds:** everything in drive v2 is tuned by the constants at the
+  top of `cascade_robot_drive_v2.py`, each one commented. The ones you will
+  actually want are `FINE_TOP`, `STICK_EXPO`, `RAMP_PER_SECOND`,
+  `CASCADE_STRAIN_AMPS` and `CLAW_HOLD_AMPS`. [Why drive v2 feels the way it
+  does](CONTROL_FEEL.md) explains each one and what happens when you move it.
 - **Joystick deadzone:** `DEADBAND`. Raise it if the robot creeps when the sticks are let go.
 - **Buttons:** in `driver_control()`, change `controller_1.buttonL1` and the
   others. The buttons are `buttonL1`, `buttonL2`, `buttonR1`, `buttonR2`,
@@ -511,6 +575,7 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
   doc. Check it, because a wrong cartridge makes all the heights wrong.
 - [ ] **Cascade presets and toggle angles.** These are placeholders. See [above](#set-the-cascade-heights-and-toggle-angles).
 - [ ] **Motor test program.** Check every motor's port and direction. See [Motor test program](#motor-test-program).
+- [ ] **Drive v2, on blocks.** Its ramp, stick curve, strain easing and cascade floor have never run on the real robot. Read [Testing safely](TESTING_SAFETY.md) and work through its list. Start with the arm **down**, because that is where the program learns "the bottom" from.
 - [ ] **Port 9.** Check the brain's Devices screen to see what's plugged in there.
 - [ ] **Tune the PID** with `pid_test`.
 
@@ -529,6 +594,10 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
 | Claw motor gets hot holding a piece | Lower `CLAW_HOLD_VOLTS`. |
 | Robot creeps with the sticks let go | Raise `DEADBAND`. |
 | Autonomous doesn't run at all | Plain Run starts driver control. Use a competition switch, field control, or Timed Run. Also check `AUTON_ROUTINE` is spelled the same as in `ROUTINES`. |
+| Drive v2 says `FLOOR` and the arm will not go down | That is the software limit working. The arm was not at its resting place when the program started, so the bottom was learnt from the wrong place. Restart with the arm down. |
+| Drive v2 stops with an error about `max_torque` | Set `USE_TORQUE_LIMITS = False` at the top of `cascade_robot_drive_v2.py` and it will run without torque caps. Nothing else changes. |
+| Drive v2's sticks feel too soft | Raise `FINE_TOP` towards `1.0` and lower `STICK_EXPO` towards `1.0`. See [Why drive v2 feels the way it does](CONTROL_FEEL.md). |
+| Drive v2 eases the cascade down even when it is moving freely | `CASCADE_STRAIN_AMPS` is too low for this arm. Raise it. |
 
 ## How this matches the C++ code
 
@@ -568,3 +637,5 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Cascade slowed to **25** (`CASCADE_SPEED`): at 40 the arm was still too quick. Drive, turn and toggle stay at 40, claw at 30. |
 | 2026-10-08 | **All five speeds set to 10** for the first real test on the floor: `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED`, `CLAW_SPEED`, `TOGGLE_SPEED`. Full stick now means 10% power. |
 | 2026-10-08 | Speeds raised to **40** across the board — 10 was too slow for the motors to move the robot. |
+| 2026-10-08 | **Version 1 frozen as the backup.** Working version tagged `v1-drive-working-40` (commit `67304de` on GitHub) and copied to `versions/v1-drive-working-40/` in the Desktop folder, with a note on how to restore it. |
+| 2026-10-08 | Added **drive v2**: `cascade_robot_drive_v2.py` / `Cascade Robot Drive V2.v5python`. A two-zone stick curve, per-control rate limiting, strain sensing with torque caps on the cascade and the claw, and a software floor so the cascade cannot be driven below where it started. v1 itself was not touched. Added [Why drive v2 feels the way it does](CONTROL_FEEL.md) and [Testing safely](TESTING_SAFETY.md). |

@@ -77,12 +77,18 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 
 # How hard each part pushes when you hold its button (percent).
 # The drive sticks already scale themselves from 0 to 100, so these are
-# just a ceiling - turn them down if the robot is too fast for you.
-DRIVE_SPEED = 100
-TURN_SPEED = 100
-CASCADE_SPEED = 100
-CLAW_SPEED = 60       # slow, so the claw does not slam into things
-TOGGLE_SPEED = 80
+# a ceiling - the stick goes from nothing up to this number, never past it.
+#
+# These are SLOW ON PURPOSE so the first drive is safe. The motor test
+# program runs at 40% (`TEST_SPEED`) and these match it. Raise them about
+# 10 at a time as you get comfortable. DRIVE_SPEED and TURN_SPEED are the
+# two that matter most; CASCADE_SPEED only needs raising if the arm cannot
+# lift a game piece.
+DRIVE_SPEED = 40
+TURN_SPEED = 40
+CASCADE_SPEED = 40
+CLAW_SPEED = 30       # slow, so the claw does not slam into things
+TOGGLE_SPEED = 40
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5
@@ -132,14 +138,20 @@ def apply_deadband(value):
 
 def arcade(forward, turn):
     # Split arcade: the left side gets forward + turn and the right side
-    # gets forward - turn. If that asks a side for more than 100%, both
-    # sides are scaled down together. That keeps the turn you asked for
-    # instead of clipping one side, which would change the shape of the turn.
+    # gets forward - turn.
+    #
+    # Adding the two can ask for more than DRIVE_SPEED - up to twice it if
+    # you drive and turn hard at the same time - so whenever that happens
+    # BOTH sides are scaled down together. Scaling both keeps the shape of
+    # the turn; clipping just one side would change where the robot goes.
+    #
+    # The result is the promise that matters: no wheel is ever asked for
+    # more than DRIVE_SPEED, which is the number you set at the top.
     left = forward + turn
     right = forward - turn
     biggest = max(abs(left), abs(right))
-    if biggest > 100:
-        scale = 100.0 / biggest
+    if biggest > DRIVE_SPEED:
+        scale = float(DRIVE_SPEED) / biggest
         left = left * scale
         right = right * scale
     return left, right

@@ -146,6 +146,11 @@ side for more than 100%, both sides are scaled down together instead of one
 side being clipped, so the turn keeps its shape. A small **deadband** (`5`)
 ignores tiny stick movements so the robot does not creep.
 
+**It starts slow on purpose.** `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED` and
+`TOGGLE_SPEED` are **40**, and `CLAW_SPEED` is **30**. Full stick therefore
+means 40% power, not 100% — the same ceiling the motor test program uses
+(`TEST_SPEED = 40`). Raise them about 10 at a time as you get used to it.
+
 It also reads the drive a little differently from the match program: the
 cascade and the toggle are plain `MotorGroup`s, so both motors of a pair just
 get the same command. The match program does more than that - it compares the
@@ -157,8 +162,10 @@ power and what each mechanism is doing, and the controller screen shows the
 short version.
 
 > In the VS Code project, the file that gets downloaded to the brain is
-> `Cascade_Robot_Test/src/main.py`. Put whichever program you want to run into
-> that file - it is a plain copy of the `.py`.
+> `src/main.py` inside the project folder. There are two project folders,
+> `Cascade_Robot_Drive` and `Cascade_Robot_Test`, and both hold a copy. Put
+> whichever program you want to run into that file - it is a plain copy of
+> the `.py`.
 
 ## Motor test program
 
@@ -339,6 +346,9 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
 ### Change driver speeds or buttons
 
 - **Speeds:** `CASCADE_SPEED`, `CLAW_SPEED` and `TOGGLE_SPEED` in Settings, in percent.
+- **Drive and turn speed (drive program):** `DRIVE_SPEED` and `TURN_SPEED`. They start
+  at **40**, matching the motor test's `TEST_SPEED = 40`, so full stick gives 40% and
+  not 100%. Raise them about 10 at a time once you are comfortable.
 - **Joystick deadzone:** `DEADBAND`. Raise it if the robot creeps when the sticks are let go.
 - **Buttons:** in `driver_control()`, change `controller_1.buttonL1` and the
   others. The buttons are `buttonL1`, `buttonL2`, `buttonR1`, `buttonR2`,
@@ -552,3 +562,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Direction test on the robot. All four drive wheels spun the wrong way in MATCH direction, so **1, 10, 11 and 17** were flipped. The toggles (18 / 8), cascade (13 / 2) and claw (16) were already right. Ports and the PROS project updated to match. |
 | 2026-10-08 | Added the plain **drive program**: `cascade_robot_drive.py` / `Cascade Robot Drive.v5python`. Split arcade drive plus cascade, claw and toggle, with no PID and nothing to calibrate. Port 6 noted as a communication device, not a motor. |
 | 2026-10-08 | **Fixed a crash in the drive program.** The driver loop used the name `claw`, but only `claw_16` had been created, so pressing Run stopped with `NameError`. Added `claw = MotorGroup(claw_16)`. |
+| 2026-10-08 | **Slowed the drive program right down.** It was capped at 100% (`DRIVE_SPEED` / `TURN_SPEED`), much faster than the motor test's 40%. Everything is now 40% (`CLAW_SPEED` 30), so full stick means 40% power. |

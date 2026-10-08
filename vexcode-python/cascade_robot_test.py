@@ -87,10 +87,10 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 controller_1 = Controller(PRIMARY)
 
 # Drivetrain: 4 x 11W
-drive_left_front_11 = Motor(Ports.PORT11, DRIVE_GEARS, False)
-drive_left_back_17 = Motor(Ports.PORT17, DRIVE_GEARS, False)
-drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, True)
-drive_right_back_10 = Motor(Ports.PORT10, DRIVE_GEARS, True)
+drive_left_front_11 = Motor(Ports.PORT11, DRIVE_GEARS, True)
+drive_left_back_17 = Motor(Ports.PORT17, DRIVE_GEARS, True)
+drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
+drive_right_back_10 = Motor(Ports.PORT10, DRIVE_GEARS, False)
 left_drive = MotorGroup(drive_left_front_11, drive_left_back_17)
 right_drive = MotorGroup(drive_right_front_1, drive_right_back_10)
 
@@ -99,8 +99,8 @@ cascade_left_13 = Motor(Ports.PORT13, CASCADE_GEARS, False)
 cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)
 
 # Toggle: 2 x 5.5W, kept in sync (5.5W motors are always 200 RPM)
-toggle_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, False)
-toggle_8 = Motor(Ports.PORT8, GearSetting.RATIO_18_1, True)
+toggle_18 = Motor(Ports.PORT18, GearSetting.RATIO_18_1, True)
+toggle_8 = Motor(Ports.PORT8, GearSetting.RATIO_18_1, False)
 
 # Claw: on the long 1500mm cable
 claw_16 = Motor(Ports.PORT16, CLAW_GEARS, False)

@@ -7,8 +7,8 @@ static vex_pid::Robot robot;
 void initialize() {
     vex_pid::RobotConfig config;
 
-    config.drive.left_ports = {11, 17};
-    config.drive.right_ports = {-1, -10};
+    config.drive.left_ports = {-11, -17};
+    config.drive.right_ports = {1, 10};
 
     config.drive.wheel_diameter_in = 3.25;
     config.drive.gear_ratio = 60.0 / 18.0;
@@ -38,7 +38,7 @@ void initialize() {
     config.claw.stall_current_ma = 1200;
     config.claw.stall_check_after_ms = 200;
 
-    config.toggle.motor_ports = {18, -8};
+    config.toggle.motor_ports = {-18, 8};
 
     config.toggle.yellow_angle = 0.0;
     config.toggle.red_angle = 90.0;

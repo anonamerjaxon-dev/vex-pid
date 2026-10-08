@@ -86,7 +86,7 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 # lift a game piece.
 DRIVE_SPEED = 40
 TURN_SPEED = 40
-CASCADE_SPEED = 40
+CASCADE_SPEED = 25    # slow, so the arm creeps up instead of jumping
 CLAW_SPEED = 30       # slow, so the claw does not slam into things
 TOGGLE_SPEED = 40
 

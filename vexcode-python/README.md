@@ -146,10 +146,10 @@ side for more than 100%, both sides are scaled down together instead of one
 side being clipped, so the turn keeps its shape. A small **deadband** (`5`)
 ignores tiny stick movements so the robot does not creep.
 
-**It starts slow on purpose.** `DRIVE_SPEED`, `TURN_SPEED`, `CASCADE_SPEED` and
-`TOGGLE_SPEED` are **40**, and `CLAW_SPEED` is **30**. Full stick therefore
-means 40% power, not 100% — the same ceiling the motor test program uses
-(`TEST_SPEED = 40`). Raise them about 10 at a time as you get used to it.
+**It starts slow on purpose.** `DRIVE_SPEED`, `TURN_SPEED` and `TOGGLE_SPEED`
+are **40**, `CASCADE_SPEED` is **25** and `CLAW_SPEED` is **30**. Full stick
+therefore means 40% power, not 100% — the same ceiling the motor test program
+uses (`TEST_SPEED = 40`). Raise them about 10 at a time as you get used to it.
 
 It also reads the drive a little differently from the match program: the
 cascade and the toggle are plain `MotorGroup`s, so both motors of a pair just
@@ -348,7 +348,9 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
 - **Speeds:** `CASCADE_SPEED`, `CLAW_SPEED` and `TOGGLE_SPEED` in Settings, in percent.
 - **Drive and turn speed (drive program):** `DRIVE_SPEED` and `TURN_SPEED`. They start
   at **40**, matching the motor test's `TEST_SPEED = 40`, so full stick gives 40% and
-  not 100%. Raise them about 10 at a time once you are comfortable.
+  not 100%. `CASCADE_SPEED` is **25** and `CLAW_SPEED` is **30** in the same block.
+  These are caps: no wheel can be asked for more than `DRIVE_SPEED`, even when you
+  drive and turn hard at the same time. Raise them about 10 at a time.
 - **Joystick deadzone:** `DEADBAND`. Raise it if the robot creeps when the sticks are let go.
 - **Buttons:** in `driver_control()`, change `controller_1.buttonL1` and the
   others. The buttons are `buttonL1`, `buttonL2`, `buttonR1`, `buttonR2`,
@@ -563,3 +565,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Added the plain **drive program**: `cascade_robot_drive.py` / `Cascade Robot Drive.v5python`. Split arcade drive plus cascade, claw and toggle, with no PID and nothing to calibrate. Port 6 noted as a communication device, not a motor. |
 | 2026-10-08 | **Fixed a crash in the drive program.** The driver loop used the name `claw`, but only `claw_16` had been created, so pressing Run stopped with `NameError`. Added `claw = MotorGroup(claw_16)`. |
 | 2026-10-08 | **Slowed the drive program right down.** It was capped at 100% (`DRIVE_SPEED` / `TURN_SPEED`), much faster than the motor test's 40%. Everything is now 40% (`CLAW_SPEED` 30), so full stick means 40% power. |
+| 2026-10-08 | Cascade slowed to **25** (`CASCADE_SPEED`): at 40 the arm was still too quick. Drive, turn and toggle stay at 40, claw at 30. |

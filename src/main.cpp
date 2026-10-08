@@ -7,15 +7,15 @@ static vex_pid::Robot robot;
 void initialize() {
     vex_pid::RobotConfig config;
 
-    config.drive.left_ports = {1, 2};
-    config.drive.right_ports = {3, 4};
+    config.drive.left_ports = {11, 17};
+    config.drive.right_ports = {-1, -10};
 
     config.drive.wheel_diameter_in = 3.25;
     config.drive.gear_ratio = 60.0 / 18.0;
 
     config.drive.gearset = pros::E_MOTOR_GEARSET_18;
 
-    config.cascade.motor_ports = {5, 6};
+    config.cascade.motor_ports = {13, -2};
 
     config.cascade.gearset = pros::E_MOTOR_GEARSET_36;
 
@@ -29,7 +29,7 @@ void initialize() {
 
     config.cascade.gravity_feedforward = 8.0;
 
-    config.claw.motor_port = 7;
+    config.claw.motor_port = 16;
 
     config.claw.open_power = 127;
     config.claw.close_power = 80;
@@ -38,7 +38,7 @@ void initialize() {
     config.claw.stall_current_ma = 1200;
     config.claw.stall_check_after_ms = 200;
 
-    config.toggle.motor_ports = {8, 9};
+    config.toggle.motor_ports = {18, -8};
 
     config.toggle.yellow_angle = 0.0;
     config.toggle.red_angle = 90.0;
@@ -47,7 +47,7 @@ void initialize() {
     config.logger.filename = "/usd/vex_log.csv";
     config.logger.log_rate_hz = 50;
 
-    config.imu_port = 10;
+    config.imu_port = 9;   // the unidentified module; no IMU confirmed yet
 
     robot.initialize(config);
 }

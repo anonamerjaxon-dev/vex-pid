@@ -158,14 +158,14 @@ controller_1 = Controller(PRIMARY)
 
 # Drivetrain: 4 x 11W
 drive_left_front_11 = Motor(Ports.PORT11, DRIVE_GEARS, False)
-drive_left_back_20 = Motor(Ports.PORT20, DRIVE_GEARS, False)
+drive_left_back_17 = Motor(Ports.PORT17, DRIVE_GEARS, False)
 drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, True)
 drive_right_back_10 = Motor(Ports.PORT10, DRIVE_GEARS, True)
-left_drive = MotorGroup(drive_left_front_11, drive_left_back_20)
+left_drive = MotorGroup(drive_left_front_11, drive_left_back_17)
 right_drive = MotorGroup(drive_right_front_1, drive_right_back_10)
 
 # Cascade: 2 x 11W, kept in sync
-cascade_left_12 = Motor(Ports.PORT12, CASCADE_GEARS, False)
+cascade_left_13 = Motor(Ports.PORT13, CASCADE_GEARS, False)
 cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)
 
 # Toggle: 2 x 5.5W, kept in sync (5.5W motors are always 200 RPM)
@@ -322,7 +322,7 @@ class Odometry:
             wait(50, MSEC)
 
     def left_inches(self):
-        degrees = (drive_left_front_11.position(DEGREES) + drive_left_back_20.position(DEGREES)) / 2
+        degrees = (drive_left_front_11.position(DEGREES) + drive_left_back_17.position(DEGREES)) / 2
         return degrees * DRIVE_INCHES_PER_DEG
 
     def right_inches(self):
@@ -622,7 +622,7 @@ ROUTINES = {
 
 left_drive.set_stopping(BRAKE)
 right_drive.set_stopping(BRAKE)
-cascade_left_12.set_stopping(HOLD)
+cascade_left_13.set_stopping(HOLD)
 cascade_right_2.set_stopping(HOLD)
 toggle_18.set_stopping(HOLD)
 toggle_8.set_stopping(HOLD)
@@ -630,7 +630,7 @@ claw_16.set_stopping(HOLD)
 
 # Start both sides of each synced pair from the same position.
 # The cascade must be all the way down when the program starts.
-cascade_left_12.set_position(0, DEGREES)
+cascade_left_13.set_position(0, DEGREES)
 cascade_right_2.set_position(0, DEGREES)
 toggle_18.set_position(0, DEGREES)
 toggle_8.set_position(0, DEGREES)
@@ -644,7 +644,7 @@ brain.screen.clear_screen()
 drive_pid = PID(DRIVE_GAINS)
 heading_pid = PID(HEADING_GAINS)
 turn_pid = PID(TURN_GAINS)
-cascade = SyncedMechanism(cascade_left_12, cascade_right_2, CASCADE_GAINS,
+cascade = SyncedMechanism(cascade_left_13, cascade_right_2, CASCADE_GAINS,
                           CASCADE_FEEDFORWARD_VOLTS, 0, CASCADE_MAX_DEG)
 toggle = SyncedMechanism(toggle_18, toggle_8, TOGGLE_GAINS)
 
@@ -689,7 +689,7 @@ def driver_control():
             cascade_speed = CASCADE_SPEED
         elif controller_1.buttonL2.pressing():
             cascade_speed = -CASCADE_SPEED
-        cascade_moving = run_pair(cascade_left_12, cascade_right_2, cascade_speed, cascade_moving)
+        cascade_moving = run_pair(cascade_left_13, cascade_right_2, cascade_speed, cascade_moving)
 
         # Claw: R1 close, R2 open
         claw_speed = 0

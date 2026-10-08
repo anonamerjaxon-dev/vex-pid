@@ -92,10 +92,10 @@ Front, back, left and right are as the robot drives forward.
 | Port | Part | Motor | Reversed |
 |---|---|---|---|
 | 11 | Drive left front | 11W | no |
-| 20 | Drive left back | 11W | no |
+| 17 | Drive left back | 11W | no |
 | 1 | Drive right front | 11W | yes |
 | 10 | Drive right back | 11W | yes |
-| 12 | Cascade left | 11W | no |
+| 13 | Cascade left | 11W | no |
 | 2 | Cascade right | 11W | yes |
 | 18 | Toggle | 5.5W | no |
 | 8 | Toggle | 5.5W | yes |
@@ -104,7 +104,9 @@ Front, back, left and right are as the robot drives forward.
 - The "Reversed" column is a first guess. **Check it with the [motor test program](#motor-test-program).**
 - **Port 9** has a single device on it that nobody has identified yet. The brain's
   **Devices** screen shows what it is. If it's an inertial sensor, see [Add an inertial sensor](#add-an-inertial-sensor).
-- **Free ports** for tracking wheels and sensors: 3–7, 13–15, 17, 19.
+- **Free ports** for tracking wheels and sensors: 3, 4, 5, 7, 12, 14, 15, 19, 20.
+- **Port 6** also has a motor on it — the brain can see it, but no program drives it
+  yet. Find out what it moves and it can be wired in.
 - The two **cascade** motors and the two **toggle** motors are kept exactly in
   sync: whichever one gets ahead is slowed down until the other catches up.
 
@@ -117,10 +119,10 @@ button at a time:
 | Button | Motor | It's right if... |
 |---|---|---|
 | Up | Drive left front (11) | the wheel rolls forward |
-| Down | Drive left back (20) | the wheel rolls forward |
+| Down | Drive left back (17) | the wheel rolls forward |
 | X | Drive right front (1) | the wheel rolls forward |
 | B | Drive right back (10) | the wheel rolls forward |
-| L1 | Cascade left (12) | the lift goes up |
+| L1 | Cascade left (13) | the lift goes up |
 | R1 | Cascade right (2) | the lift goes up |
 | L2 | Toggle (18) | it spins the same way as 8 |
 | R2 | Toggle (8) | it spins the same way as 18 |
@@ -496,3 +498,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 |---|---|
 | 2026-10-07 | First version: driver control, PID autonomous ported from the C++ code, encoder odometry ready for tracking wheels. Tested in simulation only. |
 | 2026-10-08 | Real ports from the team: drive left 11/20, right 1/10, cascade left 12 / right 2, toggle 18 + 8, claw 16. Added the motor test program. |
+| 2026-10-08 | Second wiring check, two ports were wrong: cascade left **12 → 13** and drive left back **20 → 17**. Updated the Python programs, the `.v5python` copies, the PROS project and this table. |

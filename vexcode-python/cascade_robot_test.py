@@ -46,10 +46,10 @@ print("\033[2J")
 #
 #	Put the robot on a stand. Hold a button to spin its motor:
 #	  Up ......... drive left front  (11)  wheel rolls forward
-#	  Down ....... drive left back   (20)  wheel rolls forward
+#	  Down ....... drive left back   (17)  wheel rolls forward
 #	  X .......... drive right front (1)   wheel rolls forward
 #	  B .......... drive right back  (10)  wheel rolls forward
-#	  L1 ......... cascade left      (12)  lift goes up
+#	  L1 ......... cascade left      (13)  lift goes up
 #	  R1 ......... cascade right     (2)   lift goes up
 #	  L2 ......... toggle            (18)  spins the same way as 8
 #	  R2 ......... toggle            (8)   spins the same way as 18
@@ -88,14 +88,14 @@ controller_1 = Controller(PRIMARY)
 
 # Drivetrain: 4 x 11W
 drive_left_front_11 = Motor(Ports.PORT11, DRIVE_GEARS, False)
-drive_left_back_20 = Motor(Ports.PORT20, DRIVE_GEARS, False)
+drive_left_back_17 = Motor(Ports.PORT17, DRIVE_GEARS, False)
 drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, True)
 drive_right_back_10 = Motor(Ports.PORT10, DRIVE_GEARS, True)
-left_drive = MotorGroup(drive_left_front_11, drive_left_back_20)
+left_drive = MotorGroup(drive_left_front_11, drive_left_back_17)
 right_drive = MotorGroup(drive_right_front_1, drive_right_back_10)
 
 # Cascade: 2 x 11W, kept in sync
-cascade_left_12 = Motor(Ports.PORT12, CASCADE_GEARS, False)
+cascade_left_13 = Motor(Ports.PORT13, CASCADE_GEARS, False)
 cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)
 
 # Toggle: 2 x 5.5W, kept in sync (5.5W motors are always 200 RPM)
@@ -114,10 +114,10 @@ claw_16 = Motor(Ports.PORT16, CLAW_GEARS, False)
 
 TESTS = [
     ("Up", controller_1.buttonUp, drive_left_front_11, "Drive L front 11", "roll FORWARD"),
-    ("Down", controller_1.buttonDown, drive_left_back_20, "Drive L back 20", "roll FORWARD"),
+    ("Down", controller_1.buttonDown, drive_left_back_17, "Drive L back 17", "roll FORWARD"),
     ("X", controller_1.buttonX, drive_right_front_1, "Drive R front 1", "roll FORWARD"),
     ("B", controller_1.buttonB, drive_right_back_10, "Drive R back 10", "roll FORWARD"),
-    ("L1", controller_1.buttonL1, cascade_left_12, "Cascade L 12", "go UP"),
+    ("L1", controller_1.buttonL1, cascade_left_13, "Cascade L 13", "go UP"),
     ("R1", controller_1.buttonR1, cascade_right_2, "Cascade R 2", "go UP"),
     ("L2", controller_1.buttonL2, toggle_18, "Toggle 18", "same way as 8"),
     ("R2", controller_1.buttonR2, toggle_8, "Toggle 8", "same way as 18"),

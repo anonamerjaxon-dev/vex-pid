@@ -60,6 +60,11 @@ bottom" is (`cascade.reset_position()` on startup).
 - **The arm is hot, or a motor is whining and not moving** - stop, and lower
   `CASCADE_SPEED`, or lower `CASCADE_STRAIN_AMPS` so the easing comes on
   sooner.
+- **It says `BLOCKED` on the screen** - the program has decided that mechanism
+  is being held back: the motor is being told to turn and is not turning, even
+  if the current looks normal. That is usually right. If the mechanism really
+  is moving fine, raise `BLOCKED_FRACTION` (25% by default) or set
+  `USE_VELOCITY_CHECK = False` to go back to watching amps only.
 - **It stops with an error about `max_torque`** - some motors may not accept
   the torque ceiling. Open `cascade_robot_drive_v2.py`, set
   `USE_TORQUE_LIMITS = False`, and it will run without torque caps. Nothing

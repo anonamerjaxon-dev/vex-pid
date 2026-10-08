@@ -157,10 +157,58 @@ Two details that matter:
   Setting the same torque limit 50 times a second is pointless work in a loop
   that has to run every 20 ms.
 
+### The other half: watch the encoder
+
+Amps are honest, but they are not complete. A current reading tells you a motor
+is working hard; it does not tell you a motor is being **held**. A chain
+starting to drag, a game element wedged somewhere soft, or a bearing going dry
+can all hold a mechanism back while the current stays perfectly ordinary. That
+case is invisible to an amp threshold no matter how carefully the threshold is
+chosen.
+
+So the same guard also reads the encoder:
+
+- `motor.velocity(VelocityUnits.PERCENT)` - how fast the motor is **really**
+  turning, in percent of its own top speed. Note this is a different unit from
+  the `PERCENT` used for power: it is `VelocityUnits.PERCENT`, not
+  `PercentUnits.PERCENT`. On a `MotorGroup` it reports the **first motor of the
+  group** rather than a sum, which is what lets it be compared straight against
+  the commanded percent with no gear maths in the way.
+
+The rule is "told to spin, and not spinning": if the speed is under
+`BLOCKED_FRACTION` (25%) of what was asked for, for `BLOCKED_LOOPS` (6) loops
+in a row, that counts as strain on its own. Either symptom is enough to start
+the easing.
+
+Three details make it safe rather than twitchy:
+
+- The comparison is against the command the motor was **actually given**, after
+  any easing has been applied - not the original button value. If it used the
+  button value, easing the speed down would make the arm look *more* blocked,
+  which would ease it further, and the guard would chase itself into a stall it
+  had invented. Comparing against the real command lowers the bar as the speed
+  comes down, and the two settle.
+- `BLOCKED_LOOPS` is deliberately **longer** than the amp debounce. A motor
+  takes a moment to spin up to what it was asked for, and that perfectly normal
+  pause must not be read as a fault.
+- `BLOCKED_MIN_ASK` skips commands under 5%, where a speed reading is mostly
+  noise, so small deliberate crawls are left alone.
+
+The floor needed one more rule. When the arm is resting **on** the limit the
+program is deliberately sending zero while the button is still held, so the
+guard is told - through `clear_block()` - that this is a chosen stop and not a
+mechanism in trouble. Without that, sitting on the floor would slowly ease the
+arm for no reason.
+
+`USE_VELOCITY_CHECK = False` turns the whole thing off and leaves amps only.
+
 The claw uses the same class with different numbers: a permanent
 `CLAW_HOLD_AMPS = 1.2` ceiling so it can never crush anything or cook itself,
 and it eases its closing speed to 35% once amps pass `CLAW_STRAIN_AMPS`,
-which is how it decides "I am holding something now".
+which is how it decides "I am holding something now". It gets the encoder
+check too, and there it is arguably the better of the two signals: a claw that
+has closed on an object is a motor that has been told to turn and has stopped,
+whatever it happens to be drawing.
 
 **These amp numbers are the least certain part of v2.** They were not
 measured on your motor - the VEX knowledge-base page with the real
@@ -170,6 +218,11 @@ as named constants at the top of the file so you can adjust them the first
 time you feel the robot. If the easing never comes on, `CASCADE_STRAIN_AMPS`
 is too high. If it comes on while the arm is moving freely,
 it is too low.
+
+The encoder half exists partly because of that uncertainty. Its numbers are
+fractions of a command rather than amps, which is a far easier thing to guess
+correctly, so it catches the case the amp threshold gets wrong. Between them,
+v2 does not stand or fall on one unmeasured figure.
 
 ## 5. What v2 deliberately does not do
 

@@ -153,6 +153,26 @@ CLAW_STRAIN_LOOPS = 2
 CLAW_EASE_STEP = 0.08
 CLAW_RECOVER_STEP = 0.10
 
+# ---- Strain protection: the other half -----------------------------------
+# Amps catch a hard hit the instant it happens, because the current jumps the
+# moment a motor is loaded. They are not the whole story: a chain starting to
+# drag, or a game element wedged somewhere soft, can hold a motor back while
+# it draws a perfectly ordinary current. So the encoder gets a say as well.
+#
+# "Told to spin and not spinning" needs no figure that you have to guess at in
+# amps. It compares the motor's own speed reading against what we just asked
+# it for, so it scales itself to whatever this mechanism normally does.
+USE_VELOCITY_CHECK = True     # False = watch the current only
+BLOCKED_FRACTION = 0.25       # moving slower than this share of what was
+                              # asked for counts as "not moving"
+BLOCKED_LOOPS = 6             # ...for this many loops in a row before we
+                              # believe it. A speed reading jitters more than
+                              # a current reading, and a motor takes a moment
+                              # to spin up to what it was asked for, so this
+                              # debounce has to be the longer of the two.
+BLOCKED_MIN_ASK = 5.0         # below this the speed reading is mostly noise,
+                              # so small deliberate crawls are left alone
+
 # How much a command may change in one loop of the driver program.
 RAMP_PER_LOOP = RAMP_PER_SECOND * LOOP_MS / 1000.0
 
@@ -298,7 +318,13 @@ def pad(text, width):
 # ==========================================================================
 
 class StrainGuard:
-    # Watches one mechanism's motor current and eases off when it strains.
+    # Watches one mechanism and eases off when it strains.
+    #
+    # There are two ways to be in trouble, and either one is enough:
+    #   * pulling more CURRENT than this mechanism should need, which is what
+    #     the numbers in the settings block are for, or
+    #   * being asked to move and not MOVING, which the encoder reports and
+    #     which needs no number guessed in amps.
     #
     # Two things happen when it strains, and they do different jobs:
     #   * the SPEED is eased down (slowly, a little per loop, so you never
@@ -312,7 +338,10 @@ class StrainGuard:
     # group, so the number is the whole mechanism's appetite, not one
     # motor's.
     def __init__(self, mechanism, strain_amps, ease_amps, relaxed_amps,
-                 ease_speed, strain_loops, ease_step, recover_step):
+                 ease_speed, strain_loops, ease_step, recover_step,
+                 blocked_fraction=BLOCKED_FRACTION,
+                 blocked_loops=BLOCKED_LOOPS,
+                 blocked_min_ask=BLOCKED_MIN_ASK):
         self.mechanism = mechanism
         self.strain_amps = strain_amps    # amps that count as "working too hard"
         self.ease_amps = ease_amps        # torque ceiling while straining
@@ -326,8 +355,51 @@ class StrainGuard:
         self.straining = False
         self.capped = None                # the ceiling we last sent
 
+        # The encoder half. "speed" is kept because the brain screen shows it
+        # and a second read of the motor would be another message on the wire.
+        self.blocked_fraction = blocked_fraction
+        self.blocked_loops = blocked_loops
+        self.blocked_min_ask = blocked_min_ask
+        self.blocked_count = 0
+        self.blocked = False
+        self.speed = 0.0
+
     def amps(self):
         return self.mechanism.current(CurrentUnits.AMP)
+
+    def velocity(self):
+        # MotorGroup.velocity() reports the FIRST motor of the group, in
+        # percent of its own top speed - the same scale we command in, so the
+        # two can be compared directly with no gear maths in the way.
+        return self.mechanism.velocity(VelocityUnits.PERCENT)
+
+    def clear_block(self):
+        # Called when a mechanism is being stopped on purpose, so that a
+        # deliberate stop is never mistaken for a mechanism in trouble.
+        self.blocked_count = 0
+        self.blocked = False
+
+    def is_blocked(self, commanded):
+        # Told to spin, and not spinning.
+        #
+        # The comparison is against what we actually asked the motor for
+        # (after any easing), not the original button value, so easing the
+        # speed down lowers the bar as well and the guard cannot chase itself
+        # into a stall it made up.
+        if not USE_VELOCITY_CHECK or abs(commanded) < self.blocked_min_ask:
+            # Nothing meaningful is being asked, so do not judge - and do not
+            # spend a bus read finding out.
+            self.clear_block()
+            self.speed = 0.0
+            return False
+
+        self.speed = self.velocity()
+        if abs(self.speed) < abs(commanded) * self.blocked_fraction:
+            self.blocked_count += 1
+        else:
+            self.blocked_count = 0
+        self.blocked = self.blocked_count >= self.blocked_loops
+        return self.blocked
 
     def set_cap(self, amps):
         # Only talk to the motor when the number actually changes - every
@@ -346,10 +418,16 @@ class StrainGuard:
             # still being gentle with itself.
             self.counting = 0
             self.straining = False
+            self.clear_block()
             self.set_cap(self.relaxed_amps)
             return 0
 
-        if self.amps() >= self.strain_amps:
+        commanded = asked * self.factor
+
+        over_amps = self.amps() >= self.strain_amps
+        not_moving = self.is_blocked(commanded)
+
+        if over_amps or not_moving:
             self.counting += 1
             if self.counting >= self.strain_loops:
                 self.straining = True
@@ -437,20 +515,24 @@ def driver():
         elif controller_1.buttonL2.pressing():
             asked_cascade = -CASCADE_SPEED
 
-        # Strain easing first, so the ramp below smooths whatever the guard
-        # decided.
-        asked_cascade = cascade_guard.watch(asked_cascade)
-
-        # Where is the arm? One read, used by both checks below - asking the
-        # motor is not free.
+        # Where is the arm? One read of the motor, used by both checks below -
+        # asking the motor is not free.
         cascade_position = cascade.position(DEGREES)
 
         # Close to the floor, aim for a crawl instead of the full speed. The
         # ramp then has the whole last stretch to slow the arm down, so it
         # arrives at the limit gently and can rest right on it.
+        #
+        # This happens BEFORE the guard so that the guard judges the command
+        # the arm is really being given. Left until afterwards, a creeping arm
+        # would be measured against full speed and read as "barely moving".
         if (asked_cascade * CASCADE_DOWN_SIGN > 0
                 and cascade_position - CASCADE_LOWER_LIMIT <= CASCADE_CREEP_BAND):
             asked_cascade = CASCADE_CREEP_SPEED * CASCADE_DOWN_SIGN
+
+        # Strain easing next, so the ramp below smooths whatever the guard
+        # decided.
+        asked_cascade = cascade_guard.watch(asked_cascade)
 
         ramped_cascade = ramp_towards(ramped_cascade, asked_cascade, RAMP_PER_LOOP)
 
@@ -477,6 +559,13 @@ def driver():
         # nudge the arm down again - a little stutter at the floor for no
         # benefit.
         send_cascade = 0.0 if at_floor else ramped_cascade
+
+        if at_floor:
+            # Being stopped on purpose is not a mechanism in trouble, so the
+            # guard is told not to read this as "asked to move and did not" -
+            # otherwise sitting on the floor with the button held would slowly
+            # ease the arm for no reason.
+            cascade_guard.clear_block()
 
         cascade_moving = run_group(cascade, send_cascade, cascade_moving)
 
@@ -536,9 +625,16 @@ def driver():
             "stick  L" + pad("%+6.1f" % forward, 9) + "R" + pad("%+6.1f" % turn, 9),
             "wheels L" + pad("%+6.1f" % ramped_left, 9) + "R" + pad("%+6.1f" % ramped_right, 9),
             "cascade " + pad("%+7.1f" % cascade_position, 9) + "deg " + cascade_text,
-            "floor " + pad("%+6.1f" % CASCADE_LOWER_LIMIT, 9) + " amps " + pad("%4.2f" % cascade_guard.amps(), 6) + " ease " + str(int(cascade_guard.factor * 100)) + "%",
-            "claw " + pad(claw_text, 6) + " amps " + pad("%4.2f" % claw_guard.amps(), 6) + " ease " + str(int(claw_guard.factor * 100)) + "%",
-            "toggle " + toggle_text,
+            "  amps " + pad("%4.2f" % cascade_guard.amps(), 6)
+                + " vel " + pad("%+5.1f" % cascade_guard.speed, 7)
+                + " ease " + str(int(cascade_guard.factor * 100)) + "%"
+                + (" BLOCKED" if cascade_guard.blocked else ""),
+            "claw " + pad(claw_text, 6)
+                + " amps " + pad("%4.2f" % claw_guard.amps(), 6)
+                + " vel " + pad("%+5.1f" % claw_guard.speed, 7)
+                + " ease " + str(int(claw_guard.factor * 100)) + "%"
+                + (" BLOCKED" if claw_guard.blocked else ""),
+            "floor " + pad("%+6.1f" % CASCADE_LOWER_LIMIT, 9) + " toggle " + toggle_text,
             "",
             "L1/L2 cascade  R1/R2 claw  Up/Dn toggle",
         ]

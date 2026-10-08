@@ -209,6 +209,31 @@ then recovers gently when the strain goes away. The mechanism is
 adds the motors up while its `set_max_torque()` applies to each motor, and the
 constants are commented to say which is which.
 
+**It watches the encoder as well as the amps.** Amps catch a hard hit
+instantly, but a chain starting to drag or an element wedged somewhere soft can
+hold a motor back while it draws a perfectly ordinary current — that case is
+invisible to an amp threshold however well you pick the number. So the same
+guard also reads `velocity(VelocityUnits.PERCENT)`, how fast the motor is
+really turning as a share of its own top speed, and compares it with what it
+was asked for. Anything under `BLOCKED_FRACTION` (25%) of the request, for
+`BLOCKED_LOOPS` (6) loops in a row, is "told to spin and not spinning" and
+counts as strain by itself. Either symptom starts the easing.
+
+Two details make that safe. The comparison is against the command the motor was
+**actually** given, after any easing, so bringing the speed down lowers the bar
+too and the guard cannot chase itself into a stall it invented. And
+`BLOCKED_LOOPS` is longer than `CASCADE_STRAIN_LOOPS` on purpose, because a
+motor takes a moment to spin up and that pause must not read as a fault.
+`BLOCKED_MIN_ASK` leaves commands under 5% alone, where the reading is mostly
+noise. The brain screen shows `vel` and prints `BLOCKED` when this is what
+triggered the easing; set `USE_VELOCITY_CHECK = False` to go back to amps only.
+
+**The claw grips and stops squeezing.** It has a permanent ceiling of
+`CLAW_HOLD_AMPS` (1.2 A), and once it has been straining it eases its closing
+speed, so it holds an object without cooking the motor. A claw that has closed
+on something is also a motor told to turn that has stopped, so the encoder
+check catches it even when the current looks normal.
+
 **The cascade cannot be driven past where it started.** The arm has no physical
 stop and the worry is the chain coming off the bottom, so the program remembers
 where the arm was at startup (`cascade.reset_position()`) and refuses to send a
@@ -428,7 +453,8 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
 - **How v2 responds:** everything in drive v2 is tuned by the constants at the
   top of `cascade_robot_drive_v2.py`, each one commented. The ones you will
   actually want are `FINE_TOP`, `STICK_EXPO`, `RAMP_PER_SECOND`,
-  `CASCADE_STRAIN_AMPS` and `CLAW_HOLD_AMPS`. [Why drive v2 feels the way it
+  `CASCADE_STRAIN_AMPS`, `CLAW_HOLD_AMPS`, `CASCADE_CREEP_SPEED` and
+  `BLOCKED_FRACTION`. [Why drive v2 feels the way it
   does](CONTROL_FEEL.md) explains each one and what happens when you move it.
 - **Joystick deadzone:** `DEADBAND`. Raise it if the robot creeps when the sticks are let go.
 - **Buttons:** in `driver_control()`, change `controller_1.buttonL1` and the
@@ -613,6 +639,8 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
 | Drive v2 stops with an error about `max_torque` | Set `USE_TORQUE_LIMITS = False` at the top of `cascade_robot_drive_v2.py` and it will run without torque caps. Nothing else changes. |
 | Drive v2's sticks feel too soft | Raise `FINE_TOP` towards `1.0` and lower `STICK_EXPO` towards `1.0`. See [Why drive v2 feels the way it does](CONTROL_FEEL.md). |
 | Drive v2 eases the cascade down even when it is moving freely | `CASCADE_STRAIN_AMPS` is too low for this arm. Raise it. |
+| Drive v2 says `BLOCKED` on a mechanism that is plainly moving | `BLOCKED_FRACTION` is too high for this motor, or `BLOCKED_LOOPS` is too short. Raise the fraction, lengthen the loop count, or set `USE_VELOCITY_CHECK = False` to go back to amps only. |
+| Drive v2 no longer eases off a mechanism that has stalled | Check `USE_VELOCITY_CHECK` is `True`. If it is, the motor is still turning faster than 25% of what was asked, so raise `BLOCKED_FRACTION`. |
 
 ## How this matches the C++ code
 
@@ -656,3 +684,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Added **drive v2**: `cascade_robot_drive_v2.py` / `Cascade Robot Drive V2.v5python`. A two-zone stick curve, per-control rate limiting, strain sensing with torque caps on the cascade and the claw, and a software floor so the cascade cannot be driven below where it started. v1 itself was not touched. Added [Why drive v2 feels the way it does](CONTROL_FEEL.md) and [Testing safely](TESTING_SAFETY.md). |
 | 2026-10-08 | **v2's cascade now creeps onto its floor.** Coming down at `CASCADE_SPEED` it used to stop up to a full step above `CASCADE_LOWER_LIMIT`; within `CASCADE_CREEP_BAND` (25°) it is asked for `CASCADE_CREEP_SPEED` (10) instead, so it rests within about a degree of the limit. The ramp's own value is no longer zeroed at the floor, which removes a small stutter there. |
 | 2026-10-08 | **The same stick feel ported to the PROS C++.** New `include/control_feel.hpp` holds the deadband, the two-zone curve, the slew rate limiter and the split arcade mix; `DriveBase::manual_control` now shapes the sticks, so the old `turn * 0.7` fudge is gone. The settings live in `config.drive` in `src/main.cpp`. |
+| 2026-10-08 | **v2 watches the encoder as well as the amps.** The strain guard now eases off a mechanism that has been told to move and is not moving, even when it is drawing a perfectly ordinary current — the case an amp threshold cannot see. New `USE_VELOCITY_CHECK`, `BLOCKED_FRACTION`, `BLOCKED_LOOPS` and `BLOCKED_MIN_ASK`; the brain screen shows `vel` and prints `BLOCKED` when that is what triggered it. |

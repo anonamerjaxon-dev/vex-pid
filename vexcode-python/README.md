@@ -25,6 +25,7 @@ There are two programs:
 - [Putting it on the robot](#putting-it-on-the-robot)
 - [Controls](#controls)
 - [Ports](#ports)
+- [Drive program](#drive-program)
 - [Motor test program](#motor-test-program)
 - [How the program is laid out](#how-the-program-is-laid-out)
 - [Common edits](#common-edits)
@@ -51,15 +52,22 @@ There are two programs:
 | `cascade_robot_auton.py` | The match program as a plain Python file, so it can be read and reviewed on GitHub. |
 | `Cascade Robot Test.v5python` | **Motor test program.** Open this in VEXcode. |
 | `cascade_robot_test.py` | The motor test program as a plain Python file. |
+| `Cascade Robot Drive.v5python` | **Drive program (no PID).** Open this in VEXcode. |
+| `cascade_robot_drive.py` | The drive program as a plain Python file. |
 | `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
 
 ## Putting it on the robot
 
-1. Open **VEXcode V5**, then **File → Open** and pick `Cascade Robot Auton.v5python`.
+1. Open **VEXcode V5**, then **File → Open** and pick a program:
+   - `Cascade Robot Drive.v5python` — the plain drive program. No PID, nothing to
+     calibrate, so **start here**.
+   - `Cascade Robot Auton.v5python` — the match program: driver control plus a
+     PID autonomous.
+   - `Cascade Robot Test.v5python` — the motor test, for checking wiring.
 2. Plug in the brain (or the controller, with the brain paired), pick a slot and press **Download**.
-   Put the motor test program in a different slot, so both are on the brain.
-3. Before starting the program:
+   Put each program in a different slot, so all three are on the brain.
+3. Before starting the **match program**:
    - The **cascade must be all the way down.** The program counts "0 degrees" from wherever the lift is at startup.
    - If an inertial sensor is set up, **don't touch the robot** while the screen says "Calibrating" (about 2 seconds).
 4. Pressing **Run** on its own starts **driver control**. To run **autonomous**,
@@ -67,7 +75,8 @@ There are two programs:
    **Timed Run** option in the V5 controller's program menu (autonomous, then
    driver control).
 
-The brain screen shows this the whole time, including during driver control:
+The match program shows this on the brain screen the whole time, including
+during driver control:
 
 ```
 X 0.0  Y 0.0  H 0.0        <- position in inches and heading in degrees
@@ -76,6 +85,8 @@ Auton: pid_test            <- which autonomous routine is selected
 ```
 
 ## Controls
+
+These are the **match program** controls:
 
 | Control | Does |
 |---|---|
@@ -105,10 +116,49 @@ Front, back, left and right are as the robot drives forward.
 - **Port 9** has a single device on it that nobody has identified yet. The brain's
   **Devices** screen shows what it is. If it's an inertial sensor, see [Add an inertial sensor](#add-an-inertial-sensor).
 - **Free ports** for tracking wheels and sensors: 3, 4, 5, 7, 12, 14, 15, 19, 20.
-- **Port 6** also has a motor on it — the brain can see it, but no program drives it
-  yet. Find out what it moves and it can be wired in.
-- The two **cascade** motors and the two **toggle** motors are kept exactly in
-  sync: whichever one gets ahead is slowed down until the other catches up.
+- **Port 6 is a communication device, not a motor.** Ignore it.
+- The two **cascade** motors and the two **toggle** motors must always turn the
+  same way as each other. The match program keeps them exactly in sync:
+  whichever one gets ahead is slowed down until the other catches up. The
+  [drive program](#drive-program) just sends both motors of a pair the same
+  command, which is all you need while they are on one shaft.
+
+## Drive program
+
+`cascade_robot_drive.py` is the plain drive program: **no PID, no odometry and
+no sensors to calibrate.** It only uses the controller and the motors, so it is
+the quickest way to get the robot moving and the easiest version to read.
+
+| Control | Does |
+|---|---|
+| Left stick up/down | Drive forward / back |
+| Right stick left/right | Turn |
+| L1 / L2 | Cascade up / down |
+| R1 / R2 | Claw close / open |
+| Up / Down | Toggle one way / the other way |
+
+Let go of a button and that part **holds where it is**, so the cascade does not
+fall and the claw keeps its grip.
+
+The sticks use **split arcade drive**: the left side is asked for
+`forward + turn` and the right side for `forward - turn`. If that would ask a
+side for more than 100%, both sides are scaled down together instead of one
+side being clipped, so the turn keeps its shape. A small **deadband** (`5`)
+ignores tiny stick movements so the robot does not creep.
+
+It also reads the drive a little differently from the match program: the
+cascade and the toggle are plain `MotorGroup`s, so both motors of a pair just
+get the same command. The match program does more than that - it compares the
+two motors' positions and slows the one that is ahead until the other catches
+up.
+
+There is nothing to set up before running it. The brain screen shows the drive
+power and what each mechanism is doing, and the controller screen shows the
+short version.
+
+> In the VS Code project, the file that gets downloaded to the brain is
+> `Cascade_Robot_Test/src/main.py`. Put whichever program you want to run into
+> that file - it is a plain copy of the `.py`.
 
 ## Motor test program
 
@@ -129,14 +179,14 @@ button at a time:
 | A | Claw (16) | the claw closes |
 | Right arrow | — | flips between MATCH direction and REVERSE (to move things back) |
 
-**Why this proves the match program is right:** both programs use the exact
+**Why this proves the match program is right:** all three programs use the exact
 same `# --- Devices` block (same ports, same `True`/`False`). Each button
 spins its motor the same way the match program does for drive forward, cascade
 up, claw close and toggle spin. So if L1 makes the left cascade motor go up and
 R1 makes the right one go up, the two will work together in a match.
 
 **If a motor goes the wrong way**, flip its `True`/`False` in the
-`# --- Devices` block, in **both** programs. For example:
+`# --- Devices` block, in **all three** programs. For example:
 
 ```python
 cascade_right_2 = Motor(Ports.PORT2, CASCADE_GEARS, True)   # True -> False
@@ -500,3 +550,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Real ports from the team: drive left 11/20, right 1/10, cascade left 12 / right 2, toggle 18 + 8, claw 16. Added the motor test program. |
 | 2026-10-08 | Second wiring check, two ports were wrong: cascade left **12 → 13** and drive left back **20 → 17**. Updated the Python programs, the `.v5python` copies, the PROS project and this table. |
 | 2026-10-08 | Direction test on the robot. All four drive wheels spun the wrong way in MATCH direction, so **1, 10, 11 and 17** were flipped. The toggles (18 / 8), cascade (13 / 2) and claw (16) were already right. Ports and the PROS project updated to match. |
+| 2026-10-08 | Added the plain **drive program**: `cascade_robot_drive.py` / `Cascade Robot Drive.v5python`. Split arcade drive plus cascade, claw and toggle, with no PID and nothing to calibrate. Port 6 noted as a communication device, not a motor. |

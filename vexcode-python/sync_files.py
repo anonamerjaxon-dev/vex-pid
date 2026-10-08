@@ -8,7 +8,7 @@
 # program stored inside it as one string ("textContent"), so GitHub can't
 # show it nicely - that's why there's also a plain .py copy.
 #
-# Each command does both programs (match and motor test).
+# Each command does all three programs (match, motor test and drive).
 # This runs on your computer, not on the robot.
 
 import json
@@ -19,6 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROGRAMS = [
     ("cascade_robot_auton.py", "Cascade Robot Auton.v5python"),
     ("cascade_robot_test.py", "Cascade Robot Test.v5python"),
+    ("cascade_robot_drive.py", "Cascade Robot Drive.v5python"),
 ]
 
 

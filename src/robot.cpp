@@ -4,6 +4,19 @@
 
 namespace vex_pid {
 
+namespace {
+// The full stop button. L2 is the one button left over on this controller
+// layout: L1 is the claw, R1 and R2 drive the cascade, A/B/X/Y pick the four
+// presets, and Up/Down/Left turn the toggle. It is a trigger, so both thumbs
+// stay on the sticks while it is held.
+const auto kStopButton = pros::E_CONTROLLER_DIGITAL_L2;
+
+// The whole autonomous routine is given up on after this long, whatever state
+// it has reached. Every waiting state polls is_at_target(), and if a target is
+// never declared reached there is nothing else to stop the robot.
+constexpr std::uint32_t kAutonTimeoutMs = 15000;
+}  // namespace
+
 void Robot::initialize(const RobotConfig& config) {
     m_config = config;
 
@@ -31,6 +44,14 @@ void Robot::initialize(const RobotConfig& config) {
 }
 
 void Robot::subsystems_tick() {
+    // The full stop comes first, and it has to come first: the PIDs write the
+    // motors from in here, so a stop that only zeroed the driver's own outputs
+    // would be overwritten by m_cascade.update() on the very next pass.
+    if (m_estopped) {
+        stop_all();
+        return;
+    }
+
     m_tick_counter++;
 
     if (!m_imu_ready) {
@@ -55,6 +76,12 @@ void Robot::subsystems_tick() {
 }
 
 void Robot::driver_tick() {
+    // Read the stop button before anything else, and before the IMU check, so
+    // that it works during the couple of seconds the gyro spends calibrating.
+    if (stop_requested()) {
+        return;
+    }
+
     if (!m_imu_ready) return;
 
     pros::Controller master(pros::E_CONTROLLER_MASTER);
@@ -73,10 +100,17 @@ void Robot::driver_tick() {
         m_cascade.manual_control(127);
     } else if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
         m_cascade.manual_control(-127);
-    } else if (!m_cascade.is_at_target()) {
-    } else {
+    } else if (m_cascade.in_manual_mode()) {
+        // The button has just come off, so the arm stops where it is.
+        //
+        // This branch used to be empty. That was the dangerous one: manual
+        // mode latches, and update() does nothing at all while it is latched,
+        // so the last manual power stayed commanded for ever. Hold R1 while a
+        // preset is still travelling, let go before the arm gets there, and
+        // the motor would sit at 127 until the battery died.
         m_cascade.stop();
     }
+    // Otherwise the position PID is flying the arm, so leave it alone.
 
     bool claw_pressed = master.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
     if (claw_pressed && !m_claw_was_pressed && !m_claw.is_busy()) {
@@ -113,6 +147,12 @@ void Robot::driver_tick() {
 }
 
 void Robot::auton_tick() {
+    // The stop button works in autonomous too, which is what makes trying a
+    // routine on the real robot safe: hold L2 and the robot gives up.
+    if (stop_requested()) {
+        return;
+    }
+
     if (!m_imu_ready) return;
 
     if (m_auton_state == AutonState::Idle) {
@@ -124,14 +164,46 @@ void Robot::auton_tick() {
         return;
     }
 
+    // One watchdog over the whole routine. The states below wait on
+    // is_at_target(), and the only timeout used to live inside DriveToMidfield
+    // - which the routine would never reach if an earlier target never
+    // settled, so the robot would drive at full power until the match ended.
+    if (pros::millis() - m_auton_start_ms > kAutonTimeoutMs) {
+        stop_all();
+        m_auton_state = AutonState::Done;
+        return;
+    }
+
     run_auton_state();
 }
 
-void Robot::disabled_tick() {
+void Robot::stop_all() {
     m_drive.stop();
     m_cascade.stop();
     m_claw.stop();
     m_toggle.stop();
+}
+
+bool Robot::stop_button_held() const {
+    pros::Controller master(pros::E_CONTROLLER_MASTER);
+    return master.get_digital(kStopButton) != 0;
+}
+
+bool Robot::stop_requested() {
+    if (stop_button_held()) {
+        if (!m_estopped) {
+            m_estopped = true;
+            stop_all();
+        }
+        return true;
+    }
+
+    m_estopped = false;
+    return false;
+}
+
+void Robot::disabled_tick() {
+    stop_all();
     m_auton_state = AutonState::Idle;
 }
 

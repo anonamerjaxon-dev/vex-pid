@@ -43,6 +43,10 @@ public:
     void auton_tick();
     void disabled_tick();
 
+    // Stops every subsystem at once. Everything the robot can move goes
+    // through here, so there is exactly one definition of "stopped".
+    void stop_all();
+
     DriveBase& drive() { return m_drive; }
     Cascade& cascade() { return m_cascade; }
     Claw& claw() { return m_claw; }
@@ -57,6 +61,12 @@ public:
 private:
     void start_auton();
     void run_auton_state();
+
+    // The full stop button. stop_button_held() just reads the controller;
+    // stop_requested() also remembers that it has been pressed, so that the
+    // PIDs (which run in subsystems_tick) can be held off.
+    bool stop_button_held() const;
+    bool stop_requested();
 
     RobotConfig m_config;
 
@@ -74,8 +84,12 @@ private:
 
     AutonState m_auton_state = AutonState::Idle;
     int m_auton_routine = 0;
-    uint32_t m_auton_start_ms = 0;
-    uint32_t m_state_start_ms = 0;
+    std::uint32_t m_auton_start_ms = 0;
+    std::uint32_t m_state_start_ms = 0;
+
+    // True while the full stop button is held. Set by stop_requested(), and
+    // read by subsystems_tick(), which is where the PIDs write the motors.
+    bool m_estopped = false;
 
     int m_tick_counter = 0;
 

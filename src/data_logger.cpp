@@ -45,7 +45,7 @@ void DataLogger::write_header() {
     m_header_written = true;
 }
 
-void DataLogger::log_sample(uint32_t timestamp_ms) {
+void DataLogger::log_sample(std::uint32_t timestamp_ms) {
     if (!m_active || !m_file) return;
 
     if (!m_header_written) {

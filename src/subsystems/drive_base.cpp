@@ -67,6 +67,14 @@ void DriveBase::stop() {
     m_mode = DriveMode::Idle;
     m_left->move(0);
     m_right->move(0);
+
+    // Forget the ramp as well. manual_control ramps from whatever these hold,
+    // so leaving them at the last commanded power means the wheels would jump
+    // straight back to full stick the moment the stop was released, instead of
+    // easing up from zero.
+    m_ramped_left = 0.0;
+    m_ramped_right = 0.0;
+    m_last_manual_ms = 0;
 }
 
 void DriveBase::update() {

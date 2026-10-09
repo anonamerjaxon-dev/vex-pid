@@ -29,7 +29,7 @@ public:
         pros::Imu* imu
     );
 
-    void log_sample(uint32_t timestamp_ms);
+    void log_sample(std::uint32_t timestamp_ms);
 
     void start_session();
     void stop_session();
@@ -43,13 +43,6 @@ private:
     Claw* m_claw = nullptr;
     Toggle* m_toggle = nullptr;
     pros::Imu* m_imu = nullptr;
-
-    pros::Motor* m_drive_left_a = nullptr;
-    pros::Motor* m_drive_left_b = nullptr;
-    pros::Motor* m_drive_right_a = nullptr;
-    pros::Motor* m_drive_right_b = nullptr;
-    pros::Motor* m_cascade_a = nullptr;
-    pros::Motor* m_cascade_b = nullptr;
 
     FILE* m_file = nullptr;
     bool m_active = false;

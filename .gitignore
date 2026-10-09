@@ -34,3 +34,6 @@ compile_commands.json
 *.step
 override-*.pdf
 manual_full.txt
+
+# ── Python ──────────────────────────────────────────────
+__pycache__/

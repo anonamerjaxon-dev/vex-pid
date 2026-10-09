@@ -15,8 +15,10 @@ does, independent of the V5 brain.
 
 ```
 include/            PROS robot — headers
+  main.h              The include every PROS source starts with (see Building)
   pid.hpp             PIDController: P/I/D/F, clamped integral, settle timer
   robot.hpp           Robot — owns subsystems, IMU, logger, auton state machine
+  control_feel.hpp    Stick deadband, two-zone curve, slew rate limit, arcade mix
   data_logger.hpp     CSV telemetry logger
   subsystems/
     drive_base.hpp      Differential drive + heading correction
@@ -26,9 +28,14 @@ include/            PROS robot — headers
 
 src/                PROS robot — implementation
   main.cpp            PROS entry points + all port/pin configuration
-  robot.cpp           Subsystem ticks, driver control, autonomous routine
+  robot.cpp           Subsystem ticks, driver control, autonomous routine,
+                      emergency stop
   data_logger.cpp     Per-sample CSV writer
   subsystems/*.cpp    Subsystem implementations
+
+tools/              Build-time helpers (not part of the robot)
+  syntax_check.sh     Compile-checks every C++ file with clang, no PROS needed
+  pros_stub/pros/     Stand-in PROS headers that make that possible
 
 mpu6050_test/       ESP32-C3 + MPU-6050 IMU dashboard (PlatformIO)
 README.md             Wiring, CSV format, pattern-detection thresholds
@@ -117,20 +124,55 @@ on extension in inches.
 - `gravity_feedforward` is added to the PID output so the controller does not
   have to build integral error just to hold the lift up against gravity.
 - Four named presets (`presets[4]`), selected by the controller's face buttons.
+- The output is clamped **after** `gravity_feedforward` is added, and then cast
+  to the `std::int8_t` that `Motor_Group::move()` takes. The PID's own output is
+  already limited to ±127, so adding the 8.0 feedforward could reach 135 — which
+  does not fit in an `int8_t`, which is undefined behaviour, and which on the ARM
+  wrapped round to **−121**. Any saturating upward command, such as pressing a
+  preset from rest, would have driven the arm **down** at nearly full power.
+- A **software floor** at the bottom of the travel (`kCascadeFloorInches`,
+  −0.02 in, matching the Python side's `CASCADE_LOWER_LIMIT` of −2.0° at 0.01
+  in/degree) refuses a downward command once the arm is there. The arm has no
+  physical stopper.
+- `initialize()` **tares the encoder**, so "the bottom" means the same thing on
+  every run and not just the first run after a power cycle. The arm has to be
+  resting at its bottom when the program starts.
 - `home()` drives down until sustained current draw indicates a hard stop, then
-  tares the encoder — the zero point is found, not assumed.
+  tares the encoder — the zero point is found, not assumed. It is bounded by a
+  `kHomeTimeoutMs` wall-clock timeout as well as by the stall detector, because a
+  slipping chain or an unplugged motor never registers the stall and the loop
+  would otherwise run for ever.
+- `stop()` re-points the position PID at wherever the arm actually is. Setting
+  only the target field was not enough: `update()` runs the PID, and the PID
+  still held its old target, so the next tick drove the arm back towards it.
 
 **Claw** (`claw`) — one motor, two end states.
 
 `open()` and `close()` are not symmetric. Opening is timed (`open_time_ms`).
 Closing watches current draw: once past `stall_check_after_ms`, a draw above
 `stall_current_ma` means the claw has closed on something, so it backs off to
-`hold_power` and reports done. A 2-second timeout falls back to the same
+`hold_power` and reports done. `close_timeout_ms` (2 s) falls back to the same
 holding power, so a missed detection cannot stall the motor indefinitely.
+
+`open()` and `close()` also **set `m_is_open` themselves**. `update()` branches
+on that flag, so leaving it over from the previous action ran the wrong branch:
+the first press after boot ran the *closing* code, and a claw asked to open could
+end up commanded at full power into its hard stop. The flag records where the
+claw is, and it is deliberately **not** flipped when an action finishes.
+
+Elapsed time comes from `pros::millis()`. It used to be a count of `update()`
+calls multiplied by 10, which is only the same thing if the loop always runs at
+exactly 100 Hz — and it does not, so a slow pass stretched both the open time and
+the squeeze timeout in real time.
 
 **Toggle** (`toggle`) — a 3-position mechanism (yellow / red / blue) positioned
 by a PID on motor encoder angle, with a `ToggleState` enum so callers ask for a
 colour rather than a raw angle.
+
+`stop()` re-points the position PID at the current angle for the same reason the
+cascade does: zeroing the motors alone left the PID aiming at its old target, so
+the very next `update()` drove the toggle straight back — which is why it came
+back to life on its own after `disabled()` was called.
 
 ### Driver feel
 
@@ -164,6 +206,23 @@ limiter. Only the ceiling is separate (`drive_speed_max` and `turn_speed_max`,
 both 51 = 40% of 127), so turning can be made slower than driving without
 touching the shape. All the numbers live in `config.drive` in `src/main.cpp`.
 
+**Holding L2 stops every motor at once.** `L2` is the only button this layout
+leaves free — L1 is the claw, R1 and R2 the cascade, A/B/X/Y the four presets and
+Up/Down/Left the toggle — and it is a trigger, so both thumbs stay on the sticks
+while it is held. Three details make it a stop rather than a suggestion:
+
+- it is read **before** the sticks and before the IMU check, so it works from the
+  moment the program starts, not only once the gyro has finished calibrating;
+- `subsystems_tick()` is gated on it as well as `driver_tick()`. That matters
+  because the PIDs are what actually write the motors: a stop that only zeroed
+  the driver's own outputs would be overwritten by `m_cascade.update()` on the
+  very next pass;
+- every ramp is reset, so letting go drives on from zero instead of jumping
+  straight back to whatever the sticks are asking for.
+
+It works in autonomous too, and `stop_all()` — drive, cascade, claw, toggle — is
+the single definition of "stopped", used by the stop button and by `disabled()`.
+
 The Python **drive v2** goes further than this port does. It also watches each
 mechanism's current *and* its encoder, eases a mechanism that is being held back,
 caps the claw's torque, and keeps the cascade above a software floor — and it
@@ -180,7 +239,14 @@ thresholds, because every one of them was picked by hand.
 `robot.cpp` runs a ten-state sequence — `DriveToGoal1` → `ScorePreload` →
 `DriveToPin` → `GrabPin` → `DriveToGoal2` → `ScorePin` → `DriveToMidfield` →
 `Done` — advancing on `is_at_target()` from the relevant subsystem rather than
-on fixed delays, with a 14-second overall timeout as a safety net.
+on fixed delays.
+
+There is a **watchdog over the whole routine**, not just over its last state.
+Every waiting state polls `is_at_target()`, and the only timeout used to live
+inside `DriveToMidfield`: if an earlier target never settled, the sequence would
+never reach it and the robot would drive at full power until the match ended.
+Fifteen seconds after the routine starts, whatever state it is in, it calls
+`stop_all()` and marks itself `Done`. Holding L2 gives up immediately.
 
 ### Telemetry
 
@@ -203,6 +269,28 @@ make
 
 The `Makefile` compiles `src/*.cpp` and `src/**/*.cpp` with `-std=c++20
 -Wall -Wextra -O2`.
+
+> **`include/main.h` was missing, so this project had never compiled.** Every
+> PROS source starts with `#include "main.h"`, and the file did not exist here,
+> in the old Desktop copy, or on GitHub. The compiler stopped on
+> `src/main.cpp:1` with `fatal error: 'main.h' file not found` before reading a
+> line of robot code. It has been written (`#pragma once` plus `pros/api.h`) and
+> the project now gets past that point.
+
+**Checking it without the PROS toolchain.** There is no VEX kernel and no ARM
+toolchain on a Mac, so `tools/syntax_check.sh` compiles every C++ file with
+clang against the stand-in headers in `tools/pros_stub/`, which declare the slice
+of the PROS API this project actually uses:
+
+```bash
+./tools/syntax_check.sh
+```
+
+That **is** a real check of this project's code — it catches syntax errors,
+typos, missing includes and type mistakes such as the `int8_t` overflow above,
+and the whole project currently passes it clean under `-Wall -Wextra`. It is
+**not** the real API: passing does not prove the project links or runs on the
+brain, and only a build in PROS can tell you that.
 
 > **Note on port numbers.** `src/main.cpp` is the only file that mentions ports.
 > The assignment there is the one measured on the real robot: drive left 11/17,

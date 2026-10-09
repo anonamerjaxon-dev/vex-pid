@@ -50,6 +50,14 @@ bool Toggle::flip_to_blue()   { return flip_to(ToggleState::Blue); }
 
 void Toggle::stop() {
     m_motors->move(0);
+
+    // Adopt where the toggle actually is. Zeroing the motors alone was not
+    // enough: the position PID still had its old target, so the very next
+    // update() drove the toggle straight back to it. That is why the toggle
+    // came back to life on its own after being disabled.
+    m_target_angle = current_position();
+    m_position_pid.set_target(m_target_angle);
+    m_position_pid.reset();
 }
 
 void Toggle::update() {

@@ -51,6 +51,12 @@ public:
     void manual_control(int power);
     void home();
 
+    // True while the arm is being driven by hand (a button held) rather than by
+    // the position PID. The driver has to ask, because update() deliberately
+    // does nothing at all in manual mode: whatever was last commanded stays
+    // commanded until somebody commands something else.
+    bool in_manual_mode() const { return m_manual_mode; }
+
     const CascadeConfig& config() const { return m_config; }
 
 private:

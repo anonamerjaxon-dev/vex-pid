@@ -1,6 +1,6 @@
 #include "main.h"
 #include "robot.hpp"
-#include "pros/rtos.h"
+#include "pros/rtos.hpp"
 
 static vex_pid::Robot robot;
 

@@ -7,6 +7,6 @@
         }
     },
     "kernel": "4.1.0",
-    "location": "/Users/jackson/Desktop/work related/vex pid",
+    "location": "/Users/jackson/Desktop/work related/vex-pid",
     "py/object": "pros.conductor.project.Project"
 }

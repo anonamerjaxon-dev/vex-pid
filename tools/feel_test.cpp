@@ -126,6 +126,63 @@ int main() {
                   + ", at stick " + num(biggest_step_at));
     }
 
+    // The cap, proved rather than asserted. Every whole stick position from
+    // well past one end to well past the other, at both ceilings the robot
+    // uses, must give an answer no bigger than the ceiling - and no bigger
+    // than the motors take, whatever the ceiling is.
+    {
+        const double ceilings[2] = {51.0, 44.0};   // drive, turn
+        bool capped = true;
+        bool within_motor_range = true;
+        double biggest = 0.0;
+        int biggest_raw = 0;
+        double biggest_ceiling = 0.0;
+
+        for (const double test_ceiling : ceilings) {
+            for (int raw = -300; raw <= 300; raw++) {
+                const double value = stick_shape(static_cast<double>(raw),
+                                                 test_ceiling, stick);
+                if (std::fabs(value) > std::fabs(biggest)) {
+                    biggest = value;
+                    biggest_raw = raw;
+                    biggest_ceiling = test_ceiling;
+                }
+                if (std::fabs(value) > test_ceiling + 1e-9) {
+                    capped = false;
+                }
+                if (std::fabs(value) > kStickFull + 1e-9) {
+                    within_motor_range = false;
+                }
+            }
+        }
+
+        check(capped,
+              "the curve never asks for more than the ceiling, even for a stick "
+              "value well outside -127..127 (601 positions x 2 ceilings; the "
+              "biggest answer anywhere was " + num(biggest) + " at stick "
+                  + num(biggest_raw) + " with a ceiling of "
+                  + num(biggest_ceiling) + ")");
+        check(within_motor_range,
+              "and never asks for more than the motors take, " + num(kStickFull));
+        check(close(stick_shape(127.0, 51.0, stick), 51.0, 1e-9) &&
+                  close(stick_shape(127.0, 44.0, stick), 44.0, 1e-9),
+              "full stick asks for exactly the ceiling: "
+                  + num(stick_shape(127.0, 51.0, stick)) + " of 51, "
+                  + num(stick_shape(127.0, 44.0, stick)) + " of 44");
+    }
+
+    // A table, so the shape of the curve can be read at a glance. Not a check:
+    // it is here to be looked at when the feel is being judged. "asked" is the
+    // command in the -127..127 the motors take; the last column is how much of
+    // the ceiling that is.
+    std::printf("      stick    asked   of ceiling\n");
+    for (int percent = 0; percent <= 100; percent += 5) {
+        const double raw = kStickFull * (static_cast<double>(percent) / 100.0);
+        const double value = stick_shape(raw, ceiling, stick);
+        std::printf("      %3d%%   %7.2f   %6.1f%%\n", percent, value,
+                    100.0 * value / ceiling);
+    }
+
     // The ramp: 250% of full per second, at the 20 ms loop the drivers run.
     check(close(ramp_step(250.0, 0.02), 6.35, 1e-9),
           "a 250%-per-second ramp may change the command by "

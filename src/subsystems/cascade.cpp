@@ -230,6 +230,24 @@ void Cascade::manual_control(double demand) {
     m_manual_demand = std::clamp(demand, -1.0, 1.0);
 }
 
+void Cascade::test_raw(double percent) {
+    // Amps measuring only. No ramp, no floor and no strain guard, because all
+    // three would change the reading. The measuring program only ever asks
+    // for a POSITIVE percentage (up): the software floor does not exist in
+    // this path, so asking it to go down would drive the arm into the chain
+    // stop at full speed.
+    m_manual_mode = true;
+    m_manual_demand = 0.0;
+    m_ramped = 0.0;
+    m_motors->move(static_cast<std::int32_t>(std::lround(percent)));
+}
+
+void Cascade::test_current_limit_ma(int milliamps) {
+    if (m_motors) {
+        m_motors->set_current_limit_all(milliamps);
+    }
+}
+
 void Cascade::home() {
     m_manual_mode = true;
     m_manual_demand = 0.0;

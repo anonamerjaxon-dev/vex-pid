@@ -9,18 +9,13 @@
 
 namespace vex_pid {
 
-enum class AutonState {
-    Idle,
-    WaitForImu,
-    DriveToGoal1,
-    ScorePreload,
-    DriveToPin,
-    GrabPin,
-    DriveToGoal2,
-    ScorePin,
-    DriveToMidfield,
-    Done,
-};
+// There is deliberately no autonomous routine.
+//
+// This project is driver control only. `main.cpp` still defines the PROS entry
+// points (the linker needs them), but `autonomous()` does nothing. What is left
+// of the "autonomous" story is the subsystems' own positional moves -
+// move_to_preset(), home(), claw open()/close() - which are kept because they
+// are part of the mechanism APIs, not because anything here calls them.
 
 struct RobotConfig {
     DriveConfig drive;
@@ -40,7 +35,6 @@ public:
 
     void subsystems_tick();
     void driver_tick();
-    void auton_tick();
     void disabled_tick();
 
     // Stops every subsystem at once. Everything the robot can move goes
@@ -55,18 +49,22 @@ public:
     pros::Imu& imu() { return *m_imu; }
     bool imu_ready() const { return m_imu_ready; }
 
-    AutonState auton_state() const { return m_auton_state; }
-    void set_auton_routine(int index) { m_auton_routine = index; }
+    // The amps measuring tool reads the port lists and the driver's own speeds
+    // from here, so it never repeats a port and never picks its own speed.
+    const RobotConfig& config() const { return m_config; }
 
 private:
-    void start_auton();
-    void run_auton_state();
-
-    // The full stop button. stop_button_held() just reads the controller;
-    // stop_requested() also remembers that it has been pressed, so that the
-    // PIDs (which run in subsystems_tick) can be held off.
-    bool stop_button_held() const;
+    // The full stop button. stop_requested() reads A as a toggle: it flips
+    // m_estopped on each new press, stops everything on the way in and reports
+    // whether the robot is stopped. subsystems_tick() holds the PIDs off while
+    // it says so.
     bool stop_requested();
+    void show_stop_screen();
+    void clear_stop_screen();
+
+    // The live current/ease readout along the top of the brain screen. It is
+    // how the strain easing is watched on the real robot.
+    void show_guard_readout();
 
     RobotConfig m_config;
 
@@ -90,14 +88,15 @@ private:
     int m_imu_start_ms = 0;
     const int kImuCalibrateMs = 2500;
 
-    AutonState m_auton_state = AutonState::Idle;
-    int m_auton_routine = 0;
-    std::uint32_t m_auton_start_ms = 0;
-    std::uint32_t m_state_start_ms = 0;
-
-    // True while the full stop button is held. Set by stop_requested(), and
-    // read by subsystems_tick(), which is where the PIDs write the motors.
+    // True while the robot is stopped. A is a TOGGLE: one press stops every
+    // motor and leaves the robot stopped even after the button is let go, and
+    // the next press hands control back. Set by stop_requested(), and read by
+    // subsystems_tick(), which is where the PIDs write the motors.
     bool m_estopped = false;
+
+    // When the current/ease readout was last drawn, so it goes at a readable
+    // five times a second rather than every loop.
+    std::uint32_t m_last_readout_ms = 0;
 
     int m_tick_counter = 0;
 };

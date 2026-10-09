@@ -16,10 +16,15 @@ enum controller_analog_e_t {
 };
 class Controller {
 public:
+    // The real methods are NON-const and return std::int32_t (pros/misc.hpp).
+    // Declaring them const here would have hidden a call on a const
+    // controller, which is exactly the kind of drift that made an earlier
+    // version of this directory useless as a check.
     explicit Controller(controller_id_e_t id);
-    std::int32_t get_analog(controller_analog_e_t channel) const;
-    std::int32_t get_digital(controller_digital_e_t button) const;
-    bool get_digital_new_press(controller_digital_e_t button) const;
-    void rumble(const char* pattern) const;
+    std::int32_t get_analog(controller_analog_e_t channel);
+    std::int32_t get_digital(controller_digital_e_t button);
+    std::int32_t get_digital_new_press(controller_digital_e_t button);
+    std::int32_t rumble(const char* rumble_pattern);
+    std::int32_t is_connected(void);
 };
 }  // namespace pros

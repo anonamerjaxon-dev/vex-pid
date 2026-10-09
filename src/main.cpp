@@ -1,8 +1,14 @@
 #include "main.h"
 #include "robot.hpp"
+#include "amps_tool.hpp"
 #include "pros/rtos.hpp"
 
 static vex_pid::Robot robot;
+
+// Set this to true and download to run the amps measuring program instead of
+// the driver program. See include/amps_tool.hpp. Set it back to false and
+// download again to drive.
+constexpr bool kRunAmpsTool = false;
 
 void initialize() {
     vex_pid::RobotConfig config;
@@ -125,14 +131,20 @@ void competition_initialize() {
 }
 
 void autonomous() {
-    while (true) {
-        robot.auton_tick();
-        robot.subsystems_tick();
-        pros::delay(10);
-    }
+    // There is no autonomous routine in this project - it is driver control
+    // only. PROS still needs the entry point to link, so it exists and does
+    // nothing.
 }
 
 void opcontrol() {
+    if (kRunAmpsTool) {
+        // The measuring program: hold A/B/X/Y to measure each mechanism, hold
+        // any d-pad button to stop everything. It never returns; download the
+        // normal program again to drive.
+        vex_pid::amps_tool(robot);
+        return;
+    }
+
     while (true) {
         robot.driver_tick();
         robot.subsystems_tick();

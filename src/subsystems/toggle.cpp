@@ -95,6 +95,27 @@ void Toggle::manual_control(double demand) {
     m_manual_demand = std::clamp(demand, -1.0, 1.0);
 }
 
+void Toggle::test_raw(double percent) {
+    // Amps measuring only. No ramp and no PID.
+    if (!m_manual_mode) {
+        m_target_angle = current_position();
+        m_position_pid.set_target(m_target_angle);
+        m_position_pid.reset();
+    }
+    m_manual_mode = true;
+    m_manual_demand = 0.0;
+    m_ramped = 0.0;
+    m_motors->move(static_cast<std::int32_t>(std::lround(percent)));
+}
+
+double Toggle::current_draw_amps() const {
+    double milliamps = 0.0;
+    for (const auto value : m_motors->get_current_draw_all()) {
+        milliamps += static_cast<double>(value);
+    }
+    return milliamps / 1000.0;
+}
+
 void Toggle::update() {
     const std::uint32_t now = pros::millis();
     const double dt_seconds = loop_seconds(now, m_last_ms, kNominalLoopMs);

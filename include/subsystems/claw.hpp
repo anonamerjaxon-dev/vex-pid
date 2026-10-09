@@ -65,6 +65,16 @@ public:
     // the current limit.
     void manual_control(double demand);
 
+    // Amps measuring only - see include/amps_tool.hpp. Raw percentage, no
+    // ramp and no strain guard, so the current reading is the motor's own.
+    void test_raw(double percent);
+
+    // Amps measuring only. The tool wants the motor's own current, not the
+    // guard's ceiling, so it opens the ceiling to the hardware maximum for the
+    // measurement and puts the configured value back afterwards.
+    void test_current_limit_ma(int milliamps);
+    int configured_current_limit_ma() const { return m_guard.limit_ma(); }
+
     bool in_manual_mode() const { return m_manual_mode; }
 
     bool is_open() const { return m_is_open; }

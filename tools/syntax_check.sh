@@ -40,6 +40,7 @@ clang++ -std=c++20 -Wall -Wextra -fsyntax-only \
     "${HEADERS[@]}" \
     src/main.cpp \
     src/robot.cpp \
+    src/amps_tool.cpp \
     src/data_logger.cpp \
     src/subsystems/cascade.cpp \
     src/subsystems/claw.cpp \

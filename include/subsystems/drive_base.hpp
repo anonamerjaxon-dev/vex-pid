@@ -86,6 +86,15 @@ public:
     // straight through.
     void manual_control(double throttle, double turn);
 
+    // Amps measuring only - see include/amps_tool.hpp. No stick curve, no
+    // ramp and no heading correction: the tool wants to read the motor as it
+    // really is, and every one of those would change the current it measures.
+    void test_raw(double percent);
+
+    // Everything the drive motors are drawing added up, in amps. This is a
+    // TOTAL for the group, not a per-motor figure.
+    double current_draw_amps() const;
+
 private:
     double inches_to_ticks(double inches) const;
     double ticks_to_inches(double ticks) const;

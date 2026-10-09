@@ -22,7 +22,8 @@ does, independent of the V5 brain.
 include/            PROS robot — headers
   main.h              The include every PROS source starts with (see Building)
   pid.hpp             PIDController: P/I/D/F, clamped integral, settle timer
-  robot.hpp           Robot — owns subsystems, IMU, logger, auton state machine
+  robot.hpp           Robot — owns subsystems, IMU, logger, stop screen
+  amps_tool.hpp       The amps measuring program (see Measuring the currents)
   control_feel.hpp    Stick deadband, two-zone curve, slew rate limit, arcade mix
   strain_guard.hpp    Current + encoder strain sensing, easing and current limits
   data_logger.hpp     CSV telemetry logger
@@ -33,9 +34,11 @@ include/            PROS robot — headers
     toggle.hpp          3-position toggle (yellow / red / blue)
 
 src/                PROS robot — implementation
-  main.cpp            PROS entry points + all port/pin configuration
-  robot.cpp           Subsystem ticks, driver control, autonomous routine,
+  main.cpp            PROS entry points, the amps-tool switch + all port/pin
+                      configuration
+  robot.cpp           Subsystem ticks, driver control, current readout,
                       emergency stop
+  amps_tool.cpp       The amps measuring program
   data_logger.cpp     Per-sample CSV writer
   subsystems/*.cpp    Subsystem implementations
 
@@ -43,7 +46,7 @@ tools/              Build-time helpers (not part of the robot)
   get_pros_headers.sh Downloads the real PROS headers into .pros_headers/
   syntax_check.sh     Compile-checks every C++ file with clang, no PROS needed
   feel_test.sh        Builds and runs feel_test.cpp on this machine
-  feel_test.cpp       37 checks of the stick curve and the strain guard
+  feel_test.cpp       40 checks of the stick curve and the strain guard
   pros_stub/pros/     Fallback stand-in headers, copied from the real API
 
 TESTING_SAFETY.md     Read before the first run of anything
@@ -81,12 +84,25 @@ from the PROS entry points:
 | PROS entry point | What it ticks |
 |---|---|
 | `initialize()` | Builds `RobotConfig`, calls `robot.initialize(config)` |
-| `opcontrol()` | `driver_tick()` — controller input — plus `subsystems_tick()` |
-| `autonomous()` | `auton_tick()` — state machine — plus `subsystems_tick()` |
-| `disabled()` | `disabled_tick()` — stops every subsystem, resets auton |
+| `opcontrol()` | `driver_tick()` — controller input — plus `subsystems_tick()`, or the amps measuring program when `kRunAmpsTool` is set |
+| `autonomous()` | Nothing. This project is driver control only — see below |
+| `disabled()` | `disabled_tick()` — stops every subsystem, clears the stop latch |
 
 All configuration lives in one place. `src/main.cpp` is the only file that
 mentions port numbers, so changing wiring never means editing a subsystem.
+
+### There is no autonomous routine
+
+`autonomous()` is deliberately empty. The entry point still exists because PROS
+needs it to link, but nothing in this project runs a timed sequence — it is
+driver control only.
+
+What survives from the autonomous work is the subsystems' own positional moves
+(`move_to_preset()`, `home()`, the claw's one-shot `open()`/`close()`), because
+they are part of the mechanism APIs. Nothing calls them from the main loop, and
+the ten-state `AutonState` machine, its 15-second whole-routine watchdog and
+`auton_tick()` have all been deleted.
+
 
 ### PID controller
 
@@ -98,8 +114,8 @@ mentions port numbers, so changing wiring never means editing a subsystem.
   accumulator, which is what stops integral windup during a long approach.
 - **Output clamping** between `output_min` and `output_max` (default ±127).
 - **Settle detection** — `is_settled()` returns true once the error has stayed
-  inside `settle_error` for `settle_ticks` consecutive updates. Autonomous
-  states advance on this signal instead of on a fixed sleep, so the routine
+  inside `settle_error` for `settle_ticks` consecutive updates. The subsystem
+  positional moves use this signal instead of a fixed sleep, so a move
   self-adjusts to how the robot is actually moving.
 
 Gains are plain `PIDGains` structs, so they can be tuned per subsystem without
@@ -262,6 +278,20 @@ robot accelerates for a given stick position. The curve decides which stick
 position means which speed. A lightness of touch that used to mean 100% of the
 ceiling now means well under half of it.
 
+**The ceiling is structural, not a clamp bolted on.** `stick_shape()` ends in
+`return sign * power * ceiling`, with `power` built from a normalized magnitude
+that is pinned to 1.0, so the answer *cannot* exceed the ceiling. `arcade()` then
+shares any excess between the wheels rather than clipping one, which would drag
+the robot sideways. `tools/feel_test.sh` proves both on this machine: every one
+of 601 stick positions from well past one end to well past the other, at both
+ceilings (51 and 44), and the biggest answer anywhere is exactly the ceiling —
+plus a printed table of the whole curve. The same test measures how evenly the
+travel is used. Over the first **85% of the stick** the command rises from 15% to
+48% of the ceiling — that is the precise part — and the last 15% spends the
+remaining half, reaching 64% of the ceiling at 90% of the stick. If that top end
+turns out to be too sudden to drive, `stick.fine_end` is the knob: raising it
+moves where the fast zone starts.
+
 **The controls.** The drive project and the Python drive v2 now have the same
 map:
 
@@ -272,7 +302,7 @@ map:
 | L1 / L2 | Cascade up / down, held |
 | R1 / R2 | Claw close / open, held |
 | B / Y | Toggle one way / the other, held |
-| **A** | **Full stop** |
+| **A** | **Full stop — press once to stop, press again to drive** |
 | X, Up, Down, Left | Unused |
 
 Every one of the mechanism buttons is **held, not latched**: letting go passes a
@@ -280,44 +310,74 @@ demand of zero, and the ramp eases the mechanism down from wherever it was rathe
 than stopping it dead. The arm, the claw and the toggle hold their position when
 the button comes off, because their motors are in brake-hold mode.
 
-**Holding A stops every motor at once.** A is deliberately the one button that is
-not next to a mechanism control, and it can be hit with a thumb without letting
-go of a stick. Three details make it a stop rather than a suggestion:
+**Pressing A stops every motor, and it stays stopped when you let go. Press it
+again to drive.** A is deliberately the one button that is not next to a
+mechanism control, and it can be hit with a thumb without letting go of a stick.
+It is a **latched toggle**, not a hold, so the driver does not have to keep a
+finger on it while they sort out whatever went wrong. Four details make it a
+stop rather than a suggestion:
 
+- it is read with `get_digital_new_press()`, which is **edge triggered**: holding
+  A produces exactly one press, so the robot cannot flicker between stopped and
+  driving under a resting thumb;
 - it is read **before** the sticks and before the IMU check, so it works from the
   moment the program starts, not only once the gyro has finished calibrating;
 - `subsystems_tick()` is gated on it as well as `driver_tick()`. That matters
   because the PIDs are what actually write the motors: a stop that only zeroed
   the driver's own outputs would be overwritten by `m_cascade.update()` on the
   very next pass;
-- every ramp and every guard is cleared, so letting go drives on from zero
-  instead of jumping straight back to whatever the sticks are asking for.
+- `stop_all()` is called on **both** edges — stopping and handing control back —
+  so every ramp is zeroed and the robot eases up from nothing instead of jumping
+  straight back to whatever the sticks were asking for during the stop.
 
-It works in autonomous too, and `stop_all()` — drive, cascade, claw, toggle — is
-the single definition of "stopped", used by the stop button and by `disabled()`.
+The brain says `FULL STOP` in red, and `press A to drive`, for as long as the
+latch is on. Going into `disabled()` clears the latch, so being disabled never
+leaves the robot stopped for the next enable.
+
+`stop_all()` — drive, cascade, claw, toggle — is the single definition of
+"stopped", used by the stop button and by `disabled()`.
 
 Both the cascade and the claw also watch themselves while the driver is holding a
 button, through `strain_guard.hpp`: if a mechanism draws too much current, or is
 told to move and does not, the command is eased back and the per-motor current
-limit is lowered. The Python drive v2 does the same thing with the same numbers;
-`vexcode-python/CONTROL_FEEL.md` is the write-up of the reasoning, and
-`vexcode-python/cascade_robot_amps.py` is the tool that measures what each
-mechanism really draws — worth running before trusting any of the current
-thresholds, because every one of them was picked by hand.
+limit is lowered. The top two lines of the brain screen show what each guarded
+mechanism is drawing and how far it has been eased (`casc 12.34 A  ease  35%`,
+and `BLOCKED` when it is being told to move and not moving), so the automatic
+slow-down can be watched rather than taken on trust.
 
-### Autonomous
+The Python drive v2 does the same thing with the same numbers;
+`vexcode-python/CONTROL_FEEL.md` is the write-up of the reasoning.
 
-`robot.cpp` runs a ten-state sequence — `DriveToGoal1` → `ScorePreload` →
-`DriveToPin` → `GrabPin` → `DriveToGoal2` → `ScorePin` → `DriveToMidfield` →
-`Done` — advancing on `is_at_target()` from the relevant subsystem rather than
-on fixed delays.
+### Measuring the currents
 
-There is a **watchdog over the whole routine**, not just over its last state.
-Every waiting state polls `is_at_target()`, and the only timeout used to live
-inside `DriveToMidfield`: if an earlier target never settled, the sequence would
-never reach it and the robot would drive at full power until the match ended.
-Fifteen seconds after the routine starts, whatever state it is in, it calls
-`stop_all()` and marks itself `Done`. Holding A gives up immediately.
+Every current threshold in the project — `guard.strain_amps`, `guard.ease_amps`,
+`guard.relaxed_amps`, the claw's `stall_current_ma` — was picked by hand. To
+measure what the mechanisms really draw, set `kRunAmpsTool = true` in
+`src/main.cpp` and download: `opcontrol()` then runs `amps_tool()` instead of
+the driver program.
+
+| Button | Test |
+|---|---|
+| hold A | cascade, lifting up |
+| hold B | claw, closing |
+| hold X | toggle, turning |
+| hold Y | drive, forwards |
+| hold any d-pad | stop everything, at once |
+
+Let go and that mechanism stops at once; hold past five seconds and the test
+ends by itself. The screen shows now / peak / steady, the peak is kept in the
+table on the idle screen, and a per-motor figure is bracketed after the total
+because `MotorGroup::current()` **adds its motors up** — the pair total is what
+compares with `guard.strain_amps`, while `guard.ease_amps` is per motor. The
+tool deliberately sets no current ceiling on the motors: a ceiling is a clamp,
+so once a motor reaches it the reading stops climbing and "working hard" cannot
+be told apart from "about to stall". It opens the claw's and the cascade's own
+limit to 2500 mA — the motor's maximum — for the measurement and puts the
+configured value back afterwards.
+
+The Python half of this is `vexcode-python/cascade_robot_amps.py`, which does
+the same thing on the same ports; `vexcode-python/README.md` has the fuller
+write-up.
 
 ### Telemetry
 

@@ -61,6 +61,14 @@ public:
     // symmetrical. Held, not latched: letting go stops asking for movement.
     void manual_control(double demand);
 
+    // Amps measuring only - see include/amps_tool.hpp. No ramp: the tool
+    // wants to read the motor as it really is.
+    void test_raw(double percent);
+
+    // Everything the toggle motors are drawing added up, in amps. This is a
+    // TOTAL for the group, not a per-motor figure.
+    double current_draw_amps() const;
+
     bool in_manual_mode() const { return m_manual_mode; }
 
     bool is_at_target() const;

@@ -2,9 +2,9 @@
 
 Read this before the robot moves for the first time.
 
-None of the code in this repository has ever run on a real robot. Not the
-autonomous routine, not the driver control, not the strain guard, not the
-software floor — nothing. It has been compiled and type-checked against the real
+None of the code in this repository has ever run on a real robot. Not the driver
+control, not the strain guard, not the software floor, not the amps measuring
+tool — nothing. It has been compiled and type-checked against the real
 PROS API (`tools/syntax_check.sh`) and the pure logic has been tested on a laptop
 (`tools/feel_test.sh`), and that is genuinely all that is known. Everything else
 — every speed, every ramp rate, every current limit — was a reasonable number
@@ -32,14 +32,19 @@ So the first run is a test, not a match.
 5. **Start with a charged battery.** A tired battery sags under load, the
    motors behave differently, and every number you measure will be wrong.
 6. **Ask before anything risky.** If you are about to try something you have
-   not seen this robot do — a new mechanism, a faster speed, a longer
-   autonomous step — that is the moment to stop and ask.
+   not seen this robot do — a new mechanism, a faster speed, a longer move —
+   that is the moment to stop and ask.
 
 ## Learn the stop before anything else moves
 
 The stop is **button A**, and it stops every motor at once: drive, cascade, claw
-and toggle. Press it before you press anything else, with the wheels off the
-floor, and watch that the motors really go quiet.
+and toggle. **Press it once and the robot stays stopped even when your thumb comes
+off; press it again to drive.** That is the point of it being a latch — you do not
+have to hold anything while you work out what went wrong. The brain screen says
+`FULL STOP` for as long as it is stopped.
+
+Press it before you press anything else, with the wheels off the floor, and watch
+that the motors really go quiet. Then press it again and watch the screen clear.
 
 The two other stop controls, for the Python programs, are in
 [`vexcode-python/TESTING_SAFETY.md`](vexcode-python/TESTING_SAFETY.md): **B** in
@@ -49,6 +54,12 @@ The full control map is in the **Driver feel** section of the
 [README](README.md): left stick throttle, right stick turn, L1/L2 cascade up and
 down, R1/R2 claw close and open, B/Y toggle, A stop. Every mechanism button is
 held, not latched, so letting go lets the ramp ease the mechanism down.
+
+The top two lines of the brain screen are a live readout of what the cascade and
+the claw are drawing and how far the strain guard has eased each one back
+(`casc 12.34 A  ease  35%`, and `BLOCKED` when it is told to move and is not). That
+is the automatic slow-down at strain, visible while it happens — watch it when you
+do step 6.
 
 ## Put the arm down first
 
@@ -65,31 +76,39 @@ a power cycle.
 
 ## The order to test in
 
-1. **Wheels off the floor, robot on, press A.** Nothing should move. This proves
+1. **Wheels off the floor, robot on, press A.** The screen should say
+   `FULL STOP` and nothing should move. Let go of A and check that it *stays*
+   stopped — that is the latch. Press A again and the screen clears. This proves
    the stop before you need it.
 2. **Check each mechanism alone, slowly.** One button at a time, at a distance,
    with nothing in the way. Does the claw open when you press R2 and close on R1?
    Does the cascade go up on L1 and down on L2? Does the toggle go both ways?
 3. **Measure the currents** before trusting any current threshold. Every number
-   in `src/main.cpp` with `_amps` in it was picked by hand. The Python tool
-   `vexcode-python/cascade_robot_amps.py` is what turns those guesses into
-   measurements; the procedure is in
-   [`vexcode-python/README.md`](vexcode-python/README.md) under **Measuring the
-   real currents**.
+   in `src/main.cpp` with `_amps` in it was picked by hand. There are two tools
+   that turn those guesses into measurements, one for each half of the project:
+   set `kRunAmpsTool = true` in `src/main.cpp` and download to run the C++
+   measuring program (see **Measuring the currents** in the
+   [README](README.md)), or use `vexcode-python/cascade_robot_amps.py` (the
+   procedure is in [`vexcode-python/README.md`](vexcode-python/README.md) under
+   **Measuring the real currents**). Either way, hold a button, load the
+   mechanism gently by hand, and write down the peak.
 4. **Drive with the wheels still off the floor.** Small stick movements. Does it
    start slowly and only reach its top speed at full stick, or does it jump?
-5. **Clear a large empty space and drive on the floor.** Keep a finger over A.
+5. **Clear a large empty space and drive on the floor.** Press A once if it gets
+   away from you — you do not have to hold it.
 6. **Test the strain handling by hand.** Gently hold a mechanism back and see
-   that it eases and stops pushing rather than grinding. Never wedge a mechanism
+   that it eases and stops pushing rather than grinding, and watch the top two
+   lines of the brain screen ease back with it. Never wedge a mechanism
    so hard the motor truly cannot turn, and never walk away from one.
-7. **Only then the autonomous routine**, in as much space as you can find, with
-   a finger over A the whole time.
+
+There is no autonomous routine to test.
 
 ## If something goes wrong
 
-- **Press and hold A.** It stops every motor at once, and it is read before
+- **Press A.** It stops every motor at once, and it reads the button before
   anything else in the driver loop, so it works even if the gyro is still
-  calibrating.
+  calibrating. It latches: the robot stays stopped when your thumb comes off, and
+  one more press of A hands control back.
 - If a motor keeps running anyway, the program is not the thing in control —
   turn the brain off. A motor with a shorted or miswired connection can be
   driven by the motor controller itself.
@@ -102,7 +121,7 @@ a power cycle.
 | Checked | How |
 |---|---|
 | The code parses and type-checks against the real PROS 4.1.0 API | `./tools/syntax_check.sh` — 0 errors, 0 warnings in this project's own files |
-| The stick curve, the rate limiter and the strain guard behave | `./tools/feel_test.sh` — 37 checks, 0 failed |
+| The stick curve, the rate limiter and the strain guard behave | `./tools/feel_test.sh` — 40 checks, 0 failed, including a sweep proving the command never exceeds its ceiling |
 | The Python drive v2 logic | a fake-VEX bench harness: the ramp, the curve, the floor, the strain and encoder guards, and the full stop |
 | The Python amps tool | a fake-VEX harness: the readings, the button handling and the stop |
 
@@ -110,6 +129,7 @@ a power cycle.
 |---|---|
 | That the PROS project **links** | only a build in PROS can do that |
 | That anything works on the **real robot** | no version of this code has ever run |
+| The C++ amps measuring program | it has been compile-checked but never executed — running it would mean linking the whole project against fake motors; its Python twin is bench-tested |
 | The current thresholds in `src/main.cpp` | they were picked by hand; measure them |
 | The **speed** numbers | 40% / 35% are estimates of what is controllable, not measurements |
 | The tuning gains (`PIDGains`, `gravity_feedforward`) | never observed on hardware |
@@ -118,7 +138,7 @@ a power cycle.
 
 ## The short version
 
-Wheels off the floor. Press A and confirm nothing moves. One thing at a time.
-Never very high speed. Put the arm down before you start. Keep your hands clear.
-Measure the currents before trusting them. And ask before anything you have not
-seen the robot do before.
+Wheels off the floor. Press A and confirm nothing moves — then press it again and
+confirm the screen clears. One thing at a time. Never very high speed. Put the arm
+down before you start. Keep your hands clear. Measure the currents before trusting
+them. And ask before anything you have not seen the robot do before.

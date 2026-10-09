@@ -212,6 +212,32 @@ void DriveBase::manual_control(double throttle, double turn) {
     m_right->move(m_ramped_right);
 }
 
+void DriveBase::test_raw(double percent) {
+    // Amps measuring only. Nothing else in this class is involved: no stick
+    // curve, no arcade mix and no ramp - all three would change the current
+    // being measured. Both sides are asked for the same percentage, so the
+    // robot goes straight.
+    m_mode = DriveMode::Idle;
+    m_ramped_left = 0.0;
+    m_ramped_right = 0.0;
+    m_last_manual_ms = 0;
+
+    const auto power = static_cast<std::int32_t>(std::lround(percent));
+    m_left->move(power);
+    m_right->move(power);
+}
+
+double DriveBase::current_draw_amps() const {
+    double milliamps = 0.0;
+    for (const auto value : m_left->get_current_draw_all()) {
+        milliamps += static_cast<double>(value);
+    }
+    for (const auto value : m_right->get_current_draw_all()) {
+        milliamps += static_cast<double>(value);
+    }
+    return milliamps / 1000.0;
+}
+
 double DriveBase::inches_to_ticks(double inches) const {
     double wheel_circumference = m_config.wheel_diameter_in * M_PI;
     double wheel_revolutions = inches / wheel_circumference;

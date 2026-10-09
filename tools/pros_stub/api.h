@@ -4,3 +4,4 @@
 #include "pros/motor_group.hpp"
 #include "pros/imu.hpp"
 #include "pros/misc.h"
+#include "pros/screen.hpp"

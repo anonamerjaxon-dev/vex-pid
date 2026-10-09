@@ -142,6 +142,21 @@ void Claw::manual_control(double demand) {
     m_manual_demand = std::clamp(demand, -1.0, 1.0);
 }
 
+void Claw::test_raw(double percent) {
+    // Amps measuring only. No ramp and no strain guard.
+    m_manual_mode = true;
+    m_busy = false;
+    m_manual_demand = 0.0;
+    m_ramped = 0.0;
+    m_motor->move(static_cast<std::int32_t>(std::lround(percent)));
+}
+
+void Claw::test_current_limit_ma(int milliamps) {
+    if (m_motor) {
+        m_motor->set_current_limit(milliamps);
+    }
+}
+
 void Claw::apply_current_limit() {
     if (m_motor && m_guard.take_limit_change()) {
         m_motor->set_current_limit(m_guard.limit_ma());

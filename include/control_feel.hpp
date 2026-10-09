@@ -61,6 +61,16 @@ inline double stick_shape(double value, double ceiling,
     double sign = shaped_input > 0.0 ? 1.0 : -1.0;
     double magnitude = std::fabs(shaped_input) / kStickFull;   // 0..1
 
+    // Never trust the caller to have stayed in range. The deadband rescale
+    // multiplies by kStickFull / (kStickFull - deadband), which is slightly
+    // more than 1, so a value already outside -127..127 comes out further
+    // outside - and the fast zone would then carry it straight past the
+    // ceiling. get_analog() cannot do that, but the cap below is the whole
+    // point of this function, so it is enforced rather than assumed.
+    if (magnitude > 1.0) {
+        magnitude = 1.0;
+    }
+
     double shaped;
     if (magnitude <= settings.fine_end) {
         // The fine zone: a power curve, so the first few millimetres of travel

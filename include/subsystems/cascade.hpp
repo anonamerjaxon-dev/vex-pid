@@ -91,6 +91,19 @@ public:
     // motors.
     void manual_control(double demand);
 
+    // Amps measuring only - see include/amps_tool.hpp. Drives the motors at a
+    // raw percentage with no ramp, no floor and no strain guard, because all
+    // three would change the current being measured. The measuring program
+    // only ever asks this to go UP; the floor does not exist in this path, so
+    // asking it to go down would drive the arm into the chain stop.
+    void test_raw(double percent);
+
+    // Amps measuring only. The tool wants the motor's own current, not the
+    // guard's ceiling, so it opens the ceiling to the hardware maximum for the
+    // measurement and puts the configured value back afterwards.
+    void test_current_limit_ma(int milliamps);
+    int configured_current_limit_ma() const { return m_guard.limit_ma(); }
+
     void home();
 
     // True while the arm is being driven by hand (a button held) rather than by

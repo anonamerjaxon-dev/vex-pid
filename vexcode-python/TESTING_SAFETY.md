@@ -17,6 +17,13 @@ Be honest with yourself about where things stand:
 
 So treat the first v2 run as a first run, not as a formality.
 
+**Learn the stop before anything else moves.** In drive v2, **hold B**: every
+motor on the robot stops at once, whichever way the sticks are leaning. In the
+amps tool, hold any d-pad button for the same thing. Both are the first thing
+the program looks at, so they work even while something else is happening. Press
+it once with the wheels off the floor, before you need it, so you already know
+it works.
+
 ## The rules
 
 1. **Wheels off the floor first.** Blocks, a box, an upside-down crate -
@@ -57,8 +64,11 @@ bottom" is (`cascade.reset_position()` on startup).
 
 ## If something goes wrong
 
-- **Stop it:** press the brain's stop button, or turn the robot off. The
-  controller does nothing once the program stops.
+- **Stop it:** **hold B** (drive v2) or any d-pad button (amps tool). Every motor
+  stops while it is held, and letting go puts you back where you were without a
+  jump. **Press the brain's stop button, or turn the robot off**, if that is
+  closer - the controller does nothing once the program stops, so those always
+  work too.
 - **It says `FLOOR` and will not go further down** - that is the floor doing
   its job, not a fault.
 - **The arm is hot, or a motor is whining and not moving** - stop, and lower

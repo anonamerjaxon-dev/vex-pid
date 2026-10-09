@@ -238,7 +238,41 @@ fractions of a command rather than amps, which is a far easier thing to guess
 correctly, so it catches the case the amp threshold gets wrong. Between them,
 v2 does not stand or fall on one unmeasured figure.
 
-## 5. What v2 deliberately does not do
+## 5. The stop button is the one thing that beats everything
+
+Everything else in this file is about making the robot feel good. This part is
+about making it stop, and it is the only part where "feels nice" is not the
+question.
+
+There is a real temptation in a program like this to handle the stop as one more
+input: read the sticks, read the buttons, and let the stop fall out of the same
+logic. That is the wrong shape. Rank the inputs, and give the stop the top rank:
+
+- it is read **first**, before the sticks and before anything else;
+- while it is held, the sticks cannot command anything, however far over they
+  are — the ramps are pinned to zero rather than merely not updated;
+- the motors are told to stop **once**, on the way in, rather than fifty times a
+  second, so the stop is a deliberate event and not a stream;
+- it reaches **every** motor, including ones this run has not switched on. A
+  stop that only stops what you were looking at is not a stop;
+- it clears the strain guards, because being held still on purpose is not a
+  mechanism in trouble, and a guard that reports a fault because you asked the
+  robot to stop is a guard you will learn to ignore.
+
+Two consequences worth spelling out. **The ramps are brought down, not left
+where they were**, which is what makes letting go safe: the robot eases away
+from zero instead of jumping back to full stick, so the stop is not itself a
+hazard. And **a test that is cut short is not recorded**: in the amps tool a
+stopped run leaves no peak, because a half-finished reading that gets written
+down as a measurement is worse than no measurement.
+
+The other half of this is the mistake it replaces. The button is looked up once,
+when the program starts, by name. Get the name wrong and you get a message on
+the brain screen and a robot that will not drive — which is the safe way to be
+wrong. Looking it up inside the loop, which is where it used to live, turns the
+same typo into an exception thrown in the middle of a run.
+
+## 6. What v2 deliberately does not do
 
 - **No PID.** Asked for, and v1 did not have it either. PID makes a mechanism
   hit an exact position; it does not make a joystick feel nice. It is the

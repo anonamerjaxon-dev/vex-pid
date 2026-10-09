@@ -51,6 +51,8 @@ print("\033[2J")
 #	                  hanging when the program started
 #	                * the claw grips with a current limit, so it holds on
 #	                  without cooking the motor
+#	                * a full stop button: hold B and every motor on the
+#	                  robot stops at once
 #
 #	Left stick up/down ..... drive forward / backward
 #	Right stick left/right . turn left / right
@@ -59,6 +61,7 @@ print("\033[2J")
 #	L1 ......... cascade up          L2 ......... cascade down
 #	R1 ......... claw close          R2 ......... claw open
 #	Up ......... toggle one way      Down ....... toggle the other way
+#	B .......... FULL STOP - every motor stops while this is held
 #
 #	v1 is the plain version, kept untouched:
 #	  cascade_robot_drive.py
@@ -104,6 +107,20 @@ MIN_MOVE_FRACTION = 0.15  # the gentlest touch starts at 15% of the ceiling
 # This is the single biggest reason a machine feels smooth instead of jerky.
 RAMP_PER_SECOND = 250
 LOOP_MS = 20
+
+# ---- The full stop -------------------------------------------------------
+# Hold this button and every motor on the robot stops, whatever else is being
+# asked for. It is the "something has gone wrong, be still" button, so it is
+# the FIRST thing the loop looks at - nothing below it can command a motor
+# once this is held.
+#
+# Let go and the robot is live again. That is safe because the stop pins every
+# ramp to zero: the ramp is what would otherwise carry a number through the
+# stop and set off at speed the instant the button came back up.
+#
+# B is free in this program. A, X, Y, Left and Right are free as well, if you
+# would rather reach for one of those.
+STOP_BUTTON = "B"
 
 # ---- The cascade's soft lower limit --------------------------------------
 # The arm has no physical stop and the chain can come off if it is driven
@@ -532,9 +549,32 @@ def driver():
         recover_step=CLAW_RECOVER_STEP,
     )
 
+    # Look the full stop button up ONCE, here, rather than every pass. Doing
+    # it here also means a typo in STOP_BUTTON is something you can read on
+    # the screen at startup, instead of an exception thrown while the robot is
+    # moving. (A misspelt name in this program has done exactly that before.)
+    #
+    # If the name is not a button, the program says so and refuses to drive.
+    # A robot that will not move is the safe way to be wrong.
+    stop_button = getattr(controller_1, 'button' + STOP_BUTTON, None)
+    if stop_button is None:
+        show_brain([
+            "STOP_BUTTON is wrong:",
+            "   " + STOP_BUTTON,
+            "",
+            "Use one of A B X Y",
+            "   Left Right Up Down",
+            "   L1 L2 R1 R2",
+            "",
+            "Fix it in SETTINGS, then run",
+            "the program again.",
+        ])
+        return
+
     shown = None
     loops = 0
     last_loop_ms = None   # measured from brain.timer, never assumed
+    stopped = False       # is the full stop button being held right now?
 
     while True:
         # How long the last pass around this loop took. Measured, not assumed
@@ -543,6 +583,49 @@ def driver():
         now_ms = brain.timer.time(MSEC)
         dt_seconds = loop_seconds(now_ms, last_loop_ms)
         last_loop_ms = now_ms
+
+        # --- FULL STOP ----------------------------------------------------
+        # Looked at before anything else, so that once this button is held
+        # there is no path through the rest of the loop that reaches a motor.
+        #
+        # The ramps are pinned to zero rather than simply left alone: the ramp
+        # is what would otherwise carry a number straight through the stop,
+        # and let go at speed the moment the button came back up. From zero it
+        # has to build up again, so releasing can never make the robot jump.
+        if stop_button.pressing():
+            ramped_left = 0.0
+            ramped_right = 0.0
+            ramped_cascade = 0.0
+            ramped_claw = 0.0
+            ramped_toggle = 0.0
+            if not stopped:
+                # Tell each motor once, not fifty times a second.
+                stopped = True
+                left_drive.stop()
+                right_drive.stop()
+                cascade.stop()
+                claw.stop()
+                toggle.stop()
+                # A mechanism stopped on purpose is not one in trouble.
+                cascade_guard.clear_block()
+                claw_guard.clear_block()
+            show_brain([
+                "***  FULL  STOP  ***",
+                "",
+                "Every motor is stopped.",
+                "",
+                "Let go of " + STOP_BUTTON + " to drive again.",
+                "",
+                "Nothing moves while this",
+                "button is held down.",
+            ])
+            show_controller(["STOP", STOP_BUTTON + " held", ""])
+            # Force the normal screen to be redrawn when this is released.
+            shown = None
+            loops += 1
+            wait(LOOP_MS, MSEC)
+            continue
+        stopped = False
 
         # --- Split arcade drive -------------------------------------------
         forward = stick_shape(controller_1.axis3.position(), DRIVE_SPEED)
@@ -690,7 +773,7 @@ def driver():
                 + (" BLOCKED" if claw_guard.blocked else ""),
             "floor " + pad("%+6.1f" % CASCADE_LOWER_LIMIT, 9) + " toggle " + toggle_text,
             "",
-            "L1/L2 cascade  R1/R2 claw  Up/Dn toggle",
+            "L1/L2 cascade R1/R2 claw Up/Dn toggle" + "  " + STOP_BUTTON + "=STOP",
         ]
 
         controller_lines = [

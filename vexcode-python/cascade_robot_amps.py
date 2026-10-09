@@ -53,6 +53,9 @@ print("\033[2J")
 #
 #	Let go of the button and the motor stops immediately.
 #
+#	Hold any of Up/Down/Left/Right and EVERYTHING stops at once, whichever
+#	test is running. Let go of the d-pad and the motor goes back to waiting.
+#
 #	While the test runs, load the mechanism BY HAND:
 #	  * press down lightly on the arm as it lifts,
 #	  * let the claw close on nothing, then put a game element in it,
@@ -100,6 +103,18 @@ DRIVE_SPEED = 40
 LOOP_MS = 20              # how often the current is read
 TEST_SECONDS = 5.0        # how long one test runs
 STEADY_SAMPLES = 50       # the "steady" figure is the last second of them
+
+# ---- The full stop -------------------------------------------------------
+# Hold any one of these and EVERY motor on the robot stops, whichever test is
+# running. A tool that spins motors on purpose should never need more than one
+# finger to make it safe, so the whole d-pad is the stop button: whichever one
+# you reach for works.
+STOP_BUTTONS = ("Up", "Down", "Left", "Right")
+
+# Filled in once at startup, so the buttons are looked up a single time and a
+# typo in the tuple above is a readable message rather than a crash in the
+# middle of a test.
+STOP_KEYS = []
 
 # ---- Current ceiling -----------------------------------------------------
 # OFF on purpose. A ceiling is a clamp: once the motor hits it, the reading
@@ -263,10 +278,21 @@ def show_idle(tests):
         "X toggle    Y drive",
         "Hold a button %g s." % TEST_SECONDS,
         "Let go to stop it.",
+        "d-pad = FULL STOP",
         "Load the part by hand.",
         "peaks so far:",
         "cascade %s  claw %s" % (peak_text(tests[0]), peak_text(tests[1])),
         "toggle  %s  drive %s" % (peak_text(tests[2]), peak_text(tests[3])),
+    ])
+
+def show_stopped():
+    show_brain([
+        "***  FULL  STOP  ***",
+        "",
+        "Every motor is stopped.",
+        "",
+        "Let go of the d-pad, then",
+        "hold a button to test.",
     ])
 
 def show_running(test, reading, left):
@@ -278,6 +304,7 @@ def show_running(test, reading, left):
         "%4.1f s left" % left,
         test['hint1'],
         test['hint2'],
+        "d-pad = FULL STOP",
     ])
 
 def show_result(test, reading):
@@ -297,19 +324,38 @@ def show_result(test, reading):
 #  THE TOOL
 # ==========================================================================
 
+def stop_held():
+    # Is the full stop being held? Any direction of the d-pad counts.
+    for button in STOP_KEYS:
+        if button.pressing():
+            return True
+    return False
+
+def stop_everything():
+    # Every mechanism this tool can drive - not just the one being tested.
+    # Belt and braces: if a previous test somehow left something turning,
+    # this is what ends it.
+    for test in TESTS:
+        for group in test['groups']:
+            group.stop()
+
 def run_test(test, reading):
-    # Spin one mechanism and watch what it draws until the time is up or the
-    # button is let go, whichever happens first. A measuring tool should never
-    # keep pushing once the hand has come off.
+    # Spin one mechanism and watch what it draws until the time is up, the
+    # button is let go, or the full stop goes down - whichever happens first.
+    # A measuring tool should never keep pushing once the hand has come off.
     reading.reset()
     button = getattr(controller_1, 'button' + test['button'])
     started = brain.timer.time(MSEC)
+    was_stopped = False
     while True:
         elapsed = (brain.timer.time(MSEC) - started) / 1000.0
         left = TEST_SECONDS - elapsed
         if left <= 0.0:
             break
         if not button.pressing():
+            break
+        if stop_held():
+            was_stopped = True
             break
         for group in test['groups']:
             group.spin(test['direction'], test['speed'], PERCENT)
@@ -319,11 +365,37 @@ def run_test(test, reading):
         reading.watch(total)
         show_running(test, reading, left)
         wait(LOOP_MS, MSEC)
-    for group in test['groups']:
-        group.stop()
+    stop_everything()
+    if was_stopped:
+        # Do not record this as a peak: the test did not run its course, so
+        # the number would be whatever it happened to have reached.
+        return None
     return reading.peak
 
 def amps_tool():
+    global STOP_KEYS
+    brain.screen.set_font(FontType.MONO15)
+
+    # Look the stop buttons up once, here, so a typo in STOP_BUTTONS is
+    # something you can read on the screen instead of a crash while a motor
+    # is turning. Nothing is measured until all four are found.
+    STOP_KEYS = []
+    for name in STOP_BUTTONS:
+        button = getattr(controller_1, 'button' + name, None)
+        if button is None:
+            show_brain([
+                "STOP_BUTTONS is wrong:",
+                "   " + str(name),
+                "",
+                "Use any of:",
+                "   Up  Down  Left  Right",
+                "",
+                "Fix it in SETTINGS, then run",
+                "the program again.",
+            ])
+            return
+        STOP_KEYS.append(button)
+
     for test in TESTS:
         test['reading'] = Reading()
         test['peak'] = None
@@ -333,19 +405,30 @@ def amps_tool():
             for group in test['groups']:
                 group.set_max_torque(TORQUE_FULL_AMPS, CurrentUnits.AMP)
 
-    brain.screen.set_font(FontType.MONO15)
     show_idle(TESTS)
     controller_1.rumble(".")
 
     while True:
+        # The full stop comes first, so it works from the idle screen too.
+        if stop_held():
+            stop_everything()
+            show_stopped()
+            while stop_held():
+                wait(LOOP_MS, MSEC)
+            show_idle(TESTS)
+            continue
         for test in TESTS:
             button = getattr(controller_1, 'button' + test['button'])
             if not button.pressing():
                 continue
-            test['peak'] = run_test(test, test['reading'])
-            show_result(test, test['reading'])
+            peak = run_test(test, test['reading'])
+            if peak is None:
+                show_stopped()
+            else:
+                test['peak'] = peak
+                show_result(test, test['reading'])
             # one press is one test: wait for the hand to come off
-            while button.pressing():
+            while button.pressing() or stop_held():
                 wait(LOOP_MS, MSEC)
             show_idle(TESTS)
         wait(LOOP_MS, MSEC)

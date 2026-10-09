@@ -117,6 +117,11 @@ These are the **match program** controls:
 | R1 / R2 | Claw close / open |
 | Down arrow (hold) | Spin the toggle |
 
+The drive programs are different — they use only the sticks and L1, L2, R1, R2,
+Up and Down. **Drive v2 adds one more: hold B and every motor stops**
+([FULL STOP](#drive-v2)). The measuring tool uses A, B, X and Y for its four
+tests and any d-pad button to stop.
+
 ## Ports
 
 Front, back, left and right are as the robot drives forward.
@@ -194,6 +199,24 @@ short version.
 directions, same buttons — and adds three things the driver can feel. The long
 version, with the research behind it, is in
 [Why drive v2 feels the way it does](CONTROL_FEEL.md); this is the summary.
+
+**Hold B and every motor on the robot stops.** This is the first thing the loop
+looks at, before the sticks and before anything else, and it is the button to
+reach for when something is going wrong. While B is held:
+
+- every ramp — both wheels, the cascade, the claw, the toggle — is pinned to
+  zero, so nothing is commanded even if you are still leaning on the sticks;
+- the five motors are told to stop **once**, not fifty times a second;
+- both strain guards are cleared, because being stopped on purpose is not a
+  mechanism in trouble;
+- the brain screen says `***  FULL  STOP  ***`.
+
+Let go of B and you drive on from zero. Nothing jumps, because the ramps were
+already brought down rather than left where they were. `STOP_BUTTON` in the
+settings chooses a different button; if the name is wrong the program prints
+which button it could not find and **refuses to drive**, rather than throwing an
+error halfway through a run. A, B, X, Y, Left and Right are all free in v1 and
+v2 — only L1, L2, R1, R2, Up and Down are used.
 
 **The sticks have two speeds in one.** The first 85% of the stick travel is a
 **fine zone**: it only reaches 40% of `DRIVE_SPEED`, and it is bent so that the
@@ -321,6 +344,15 @@ a measuring tool, not a driving program: **nothing in it drives the robot.**
 
 One press is one test, and it runs for a few seconds. The idle screen keeps a
 table of the peaks so far, so you can work through all four without a pen.
+
+**Hold any d-pad button and everything stops.** Up, Down, Left or Right —
+whichever finger is free. The stop is checked before the test buttons, so it
+wins if you press both at once, and it works from the idle screen too. Pressing
+it in the middle of a test **ends** that test rather than letting it finish, and
+a test cut short that way does not leave a peak behind: you never remember a
+half-finished reading as if it were a real one. It reaches every motor,
+including ones that test never switched on, because a stop that only stopped
+the thing you were looking at would not be a stop.
 
 **Two warnings, both deliberate.** There is **no torque ceiling** in this
 program: a ceiling is a clamp, and once a motor hits it the reading stops
@@ -558,6 +590,11 @@ drive_right_front_1 = Motor(Ports.PORT1, DRIVE_GEARS, False)
   others. The buttons are `buttonL1`, `buttonL2`, `buttonR1`, `buttonR2`,
   `buttonUp`, `buttonDown`, `buttonLeft`, `buttonRight`, `buttonA`, `buttonB`,
   `buttonX` and `buttonY`.
+- **The full stop button:** `STOP_BUTTON = "B"` near the top of
+  `cascade_robot_drive_v2.py`, and `STOP_BUTTONS` in `cascade_robot_amps.py`.
+  A, B, X, Y, Left and Right are all free in v2. If you misspell the name the
+  program prints which button it could not find and **will not drive**, rather
+  than failing part-way through a run.
 - **Make the toggle spin both ways:** under the `buttonDown` check, add
   `elif controller_1.buttonUp.pressing(): toggle_speed = -TOGGLE_SPEED`
   (as two lines, like the cascade buttons).
@@ -745,6 +782,9 @@ VEXcode runs **MicroPython**, a smaller version of Python. To avoid weird errors
 | Amps tool shows `0.00 A` while a motor is clearly turning | You are reading the wrong group, or the cable is loose. Run the motor test program first. |
 | Amps tool shows a huge peak then the mechanism eases | You loaded it harder than the mechanism ever will be in a match. The useful number is the peak from a *normal* load, not from holding the arm still. |
 | Drive v2 no longer eases off a mechanism that has stalled | Check `USE_VELOCITY_CHECK` is `True`. If it is, the motor is still turning faster than 25% of what was asked, so raise `BLOCKED_FRACTION`. |
+| The `FULL STOP` screen shows but something still moves | That should be impossible: every ramp is pinned to zero and all five motors are told to stop. If it happens, something other than this program is writing to a motor. |
+| The full stop button does nothing | `STOP_BUTTON` names a button that does not exist, or one the program already uses. The brain screen prints which name it could not find. Use any of A, B, X, Y, Left or Right. |
+| The amps tool will not measure anything | The screen says which entry in `STOP_BUTTONS` is wrong. Use any of Up, Down, Left or Right. |
 
 ## How this matches the C++ code
 
@@ -792,3 +832,5 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | **v2's floor now measures how long each pass takes** instead of assuming 20 ms. The fixed `CASCADE_DEG_PER_LOOP` (12°) is gone; `brain.timer.time(MSEC)` feeds `loop_seconds()` and `cascade_travel()`, with `CASCADE_DEG_PER_SECOND` (600) and `CASCADE_SAFETY_FACTOR` (1.5). A pass that takes longer than 20 ms used to under-predict the arm's travel, which is the direction that could put it through the floor. The bench test now proves it: with the loop made three times too slow, the old arithmetic drives the arm **1.79° below** the limit while the new code stops above it. |
 | 2026-10-08 | **v2 pins the ramp at the floor** to `CASCADE_CREEP_SPEED` instead of leaving it at whatever it held. That makes a restart from the floor a crawl by design; leaving it alone had allowed a bigger jump, and zeroing it had caused a stutter. |
 | 2026-10-08 | Added the **amps measuring tool**: `cascade_robot_amps.py` / `Cascade Robot Amps.v5python`. Hold A/B/X/Y and it shows what each mechanism really draws (`now` / `peak` / `steady`, plus the per-motor figure in brackets), so the v2 thresholds can stop being guesses. No torque ceiling, on purpose — a ceiling would clamp the very number you are reading. `sync_files.py` now handles five programs. |
+| 2026-10-09 | **A full stop button.** In drive v2, hold **B** and every motor on the robot stops at once: every ramp is pinned to zero, the five motors are told to stop once, both strain guards are cleared and the screen says `***  FULL  STOP  ***`. Let go and you drive on from zero, with nothing to jump. A, B, X, Y, Left and Right are free in v1 and v2, so `STOP_BUTTON` can name any of them. Both programs look their button up **once** when they start: a misspelt name now prints a message and **refuses to drive** instead of throwing `AttributeError` part-way through a run. In the amps tool any d-pad button is the stop, it is checked before the test buttons, and a test cut short by it deliberately does not leave a peak behind. |
+| 2026-10-09 | **The PROS C++ stopped being able to hurt the robot, and can now be checked.** `include/main.h` was missing — the project had **never compiled at all** — and is now written; `tools/syntax_check.sh` compile-checks every C++ file with clang against stand-in headers. The cascade's `move()` could be handed 135 where a `std::int8_t` (−128..127) was expected, which on the ARM wraps to **−121**: pressing a preset from rest would drive the arm **down** at nearly full power. It is clamped after the feedforward now, with a software floor at the bottom of the travel. The arm also used to keep running at full power for ever if you let go of R1 while a preset was still travelling; the claw's open and close ran each other's branch; the toggle came back to life by itself after `disabled()` was called, because the position PID still had its old target. All three are fixed, and **L2 is a new full stop** in the C++ driver control. |

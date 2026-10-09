@@ -2,7 +2,7 @@
 #include "pid.hpp"
 #include "control_feel.hpp"
 #include "pros/imu.hpp"
-#include "pros/motors.hpp"
+#include "pros/motor_group.hpp"  // Motor, MotorGroup, gearsets and brake modes
 #include <vector>
 #include <cstdint>
 
@@ -78,8 +78,8 @@ public:
     double average_position() const;
     double average_velocity() const;
 
-    pros::Motor_Group& left() { return *m_left; }
-    pros::Motor_Group& right() { return *m_right; }
+    pros::MotorGroup& left() { return *m_left; }
+    pros::MotorGroup& right() { return *m_right; }
 
     // Raw stick values in -127..127. The stick curve, the split arcade mix,
     // the ceiling and the ramp all happen in here; callers pass the sticks
@@ -93,8 +93,8 @@ private:
     DriveConfig m_config;
     DriveMode m_mode = DriveMode::Idle;
 
-    pros::Motor_Group* m_left = nullptr;
-    pros::Motor_Group* m_right = nullptr;
+    pros::MotorGroup* m_left = nullptr;
+    pros::MotorGroup* m_right = nullptr;
     pros::Imu* m_imu = nullptr;
 
     PIDController m_straight_pid;

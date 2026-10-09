@@ -1,24 +1,29 @@
 #pragma once
 
-// This file has to exist and it has to be called main.h: every source file in
-// a PROS project starts with #include "main.h", and src/main.cpp:1 is no
-// exception.
+// ---------------------------------------------------------------------------
+// This file was missing from the project.
 //
-// It had gone missing, which is why this project has never once built. The
-// compiler stopped on line 1 with
+// src/main.cpp starts with #include "main.h", and with no main.h anywhere the
+// compiler stopped on its very first line with
 //
 //     fatal error: 'main.h' file not found
 //
-// before it ever read a line of the robot code, so none of the rest of this
-// folder has ever been checked by a compiler either.
+// which is why this project had never once built. This is that file, modelled
+// on the one PROS ships with its own project template.
 //
-// PROS 4 ships the whole robot API behind one header, so pulling that in is
-// all this needs to do. If your kernel does not have pros/api.h, replace the
-// line below with the headers the rest of the project already uses, which are
-// known to resolve here:
+// The include below is "api.h", NOT "pros/api.h". The PROS kernel installs a
+// top-level api.h and there is no pros/api.h at all, so the longer path fails
+// with 'pros/api.h' file not found. api.h is the master header that pulls in
+// the whole PROS API.
 //
-//     #include "pros/motors.hpp"     // Motor, Motor_Group, gearset, brake modes
-//     #include "pros/imu.hpp"        // Imu
-//     #include "pros/misc.h"          // Controller, E_CONTROLLER_DIGITAL_*
-//     #include "pros/rtos.hpp"        // millis(), delay(), Task
-#include "pros/api.h"
+// The PROS template also defines PROS_USE_LITERALS here, which turns on the
+// C++ unit literals such as 4_mtr. Nothing in this project uses them, but
+// keeping the define means the file matches the template.
+// ---------------------------------------------------------------------------
+
+#define PROS_USE_LITERALS
+
+#include "api.h"
+
+// Project-wide includes can go below this line.
+#include "control_feel.hpp"

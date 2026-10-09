@@ -5,11 +5,14 @@
 namespace vex_pid {
 
 namespace {
-// The full stop button. L2 is the one button left over on this controller
-// layout: L1 is the claw, R1 and R2 drive the cascade, A/B/X/Y pick the four
-// presets, and Up/Down/Left turn the toggle. It is a trigger, so both thumbs
-// stay on the sticks while it is held.
-const auto kStopButton = pros::E_CONTROLLER_DIGITAL_L2;
+// The full stop button: A.
+//
+// A is deliberate. It is the one button that is not next to a mechanism
+// control, it can be hit with the thumb without letting go of a stick, and -
+// unlike a trigger - it cannot be brushed by accident while reaching for
+// something else. Both sticks and every other button are ignored entirely
+// while it is held.
+const auto kStopButton = pros::E_CONTROLLER_DIGITAL_A;
 
 // The whole autonomous routine is given up on after this long, whatever state
 // it has reached. Every waiting state polls is_at_target(), and if a target is
@@ -20,12 +23,12 @@ constexpr std::uint32_t kAutonTimeoutMs = 15000;
 void Robot::initialize(const RobotConfig& config) {
     m_config = config;
 
-    m_imu = pros::Imu(m_config.imu_port);
-    m_imu.reset();
+    m_imu = new pros::Imu(m_config.imu_port);
+    m_imu->reset();
     m_imu_ready = false;
     m_imu_start_ms = pros::millis();
 
-    m_drive.initialize(m_config.drive, &m_imu);
+    m_drive.initialize(m_config.drive, m_imu);
     m_cascade.initialize(m_config.cascade);
     m_claw.initialize(m_config.claw);
     m_toggle.initialize(m_config.toggle);
@@ -36,7 +39,7 @@ void Robot::initialize(const RobotConfig& config) {
         &m_cascade,
         &m_claw,
         &m_toggle,
-        &m_imu
+        m_imu
     );
 
     m_tick_counter = 0;
@@ -96,59 +99,53 @@ void Robot::driver_tick() {
         static_cast<double>(turn)
     );
 
+    // The rest of the controls are held buttons. Each one is read every pass
+    // and passed on as a demand from -1 to +1; when nothing is held the demand
+    // is 0, which lets the mechanism ease down instead of stopping dead. The
+    // buttons are never passed straight to the motors: the ramping, the stick
+    // curve on the drive, the strain easing and the software limits all live
+    // in the subsystems, in one place each.
+
+    // Cascade: L1 up, L2 down.
+    double cascade_demand = 0.0;
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
+        cascade_demand += 1.0;
+    }
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
+        cascade_demand -= 1.0;
+    }
+    m_cascade.manual_control(cascade_demand);
+
+    // Claw: R1 closes, R2 opens.
+    double claw_demand = 0.0;
     if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
-        m_cascade.manual_control(127);
-    } else if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-        m_cascade.manual_control(-127);
-    } else if (m_cascade.in_manual_mode()) {
-        // The button has just come off, so the arm stops where it is.
-        //
-        // This branch used to be empty. That was the dangerous one: manual
-        // mode latches, and update() does nothing at all while it is latched,
-        // so the last manual power stayed commanded for ever. Hold R1 while a
-        // preset is still travelling, let go before the arm gets there, and
-        // the motor would sit at 127 until the battery died.
-        m_cascade.stop();
+        claw_demand += 1.0;
     }
-    // Otherwise the position PID is flying the arm, so leave it alone.
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
+        claw_demand -= 1.0;
+    }
+    m_claw.manual_control(claw_demand);
 
-    bool claw_pressed = master.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
-    if (claw_pressed && !m_claw_was_pressed && !m_claw.is_busy()) {
-        if (m_claw.is_open()) {
-            m_claw.close();
-        } else {
-            m_claw.open();
-        }
+    // Toggle: B one way, Y the other. It is symmetrical, so which is "red" and
+    // which is "blue" is only a matter of which way the driver finds natural -
+    // swap the two signs here if it turns out to be the other way round.
+    double toggle_demand = 0.0;
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_B)) {
+        toggle_demand += 1.0;
     }
-    m_claw_was_pressed = claw_pressed;
+    if (master.get_digital(pros::E_CONTROLLER_DIGITAL_Y)) {
+        toggle_demand -= 1.0;
+    }
+    m_toggle.manual_control(toggle_demand);
 
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A)) {
-        m_cascade.move_to_preset(0);
-    }
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B)) {
-        m_cascade.move_to_preset(1);
-    }
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
-        m_cascade.move_to_preset(2);
-    }
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) {
-        m_cascade.move_to_preset(3);
-    }
-
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_UP)) {
-        m_toggle.flip_to_red();
-    }
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)) {
-        m_toggle.flip_to_blue();
-    }
-    if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_LEFT)) {
-        m_toggle.flip_to_yellow();
-    }
+    // X, Up, Down and Left are deliberately unused. The four cascade presets
+    // used to live on A/B/X/Y; they are still there for autonomous
+    // (move_to_preset), but the driver now has the arm on the bumpers instead.
 }
 
 void Robot::auton_tick() {
     // The stop button works in autonomous too, which is what makes trying a
-    // routine on the real robot safe: hold L2 and the robot gives up.
+    // routine on the real robot safe: hold A and the robot gives up.
     if (stop_requested()) {
         return;
     }

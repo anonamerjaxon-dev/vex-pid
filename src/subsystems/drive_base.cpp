@@ -10,13 +10,13 @@ void DriveBase::initialize(const DriveConfig& config, pros::Imu* imu) {
     m_config = config;
     m_imu = imu;
 
-    m_left = new pros::Motor_Group(
+    m_left = new pros::MotorGroup(
         std::vector<std::int8_t>(
             m_config.left_ports.begin(),
             m_config.left_ports.end()
         )
     );
-    m_right = new pros::Motor_Group(
+    m_right = new pros::MotorGroup(
         std::vector<std::int8_t>(
             m_config.right_ports.begin(),
             m_config.right_ports.end()

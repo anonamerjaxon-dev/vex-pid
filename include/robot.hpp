@@ -52,7 +52,7 @@ public:
     Claw& claw() { return m_claw; }
     Toggle& toggle() { return m_toggle; }
     DataLogger& logger() { return m_logger; }
-    pros::Imu& imu() { return m_imu; }
+    pros::Imu& imu() { return *m_imu; }
     bool imu_ready() const { return m_imu_ready; }
 
     AutonState auton_state() const { return m_auton_state; }
@@ -76,7 +76,15 @@ private:
     Toggle m_toggle;
     DataLogger m_logger;
 
-    pros::Imu m_imu;
+    // Held by pointer, not by value.
+    //
+    // pros::Imu deletes its copy assignment operator, so a member `pros::Imu
+    // m_imu;` cannot be assigned to after construction - and, worse, the
+    // generated Robot constructor is deleted with it, so `Robot robot;` in
+    // main.cpp would not even compile. A pointer sidesteps both: nothing is
+    // copied, and the port (which only main.cpp knows) is passed to the
+    // constructor at initialize() time.
+    pros::Imu* m_imu = nullptr;
 
     bool m_imu_ready = false;
     int m_imu_start_ms = 0;
@@ -92,8 +100,6 @@ private:
     bool m_estopped = false;
 
     int m_tick_counter = 0;
-
-    bool m_claw_was_pressed = false;
 };
 
 }  // namespace vex_pid

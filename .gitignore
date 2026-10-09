@@ -37,3 +37,9 @@ manual_full.txt
 
 # ── Python ──────────────────────────────────────────────
 __pycache__/
+
+# ── Fetched PROS headers ────────────────────────────────
+# tools/get_pros_headers.sh downloads somebody else's kernel
+# source here so tools/syntax_check.sh can check this project
+# against the real API. It is large, and not ours to commit.
+tools/.pros_headers/

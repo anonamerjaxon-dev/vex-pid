@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 // The driver's stick feel, ported from the Python drive program
 // (vexcode-python/cascade_robot_drive_v2.py). The numbers here are the same
@@ -92,6 +93,34 @@ inline double rate_limit(double current, double target, double max_step) {
         return current - max_step;
     }
     return target;
+}
+
+// How long the last pass round the driver loop actually took, in seconds.
+//
+// This is measured rather than assumed. The program reads the clock, decides
+// what to do and waits; if a pass overruns, every ramp step computed from a
+// nominal 20 ms is too small and the mechanisms move further between passes
+// than the arithmetic believes. Reading the clock is what keeps the ramp and
+// the software floor honest when the brain is busy.
+//
+// A reading shorter than the nominal loop time is not believed: the robot may
+// have been busy elsewhere, and under-estimating the time under-estimates how
+// far a mechanism has travelled, which is the unsafe direction to be wrong in.
+inline double loop_seconds(std::uint32_t now_ms, std::uint32_t last_ms,
+                           std::uint32_t nominal_ms) {
+    double elapsed = (last_ms == 0)
+                         ? static_cast<double>(nominal_ms)
+                         : static_cast<double>(now_ms - last_ms);
+    if (elapsed < static_cast<double>(nominal_ms)) {
+        elapsed = static_cast<double>(nominal_ms);
+    }
+    return elapsed / 1000.0;
+}
+
+// The most a motor command may change in one pass, for a ramp written as
+// "percent of full per second" - the unit the Python programs use.
+inline double ramp_step(double percent_per_second, double dt_seconds) {
+    return (percent_per_second / 100.0) * kStickFull * dt_seconds;
 }
 
 // Split arcade: one stick forward and back, the other left and right. Each

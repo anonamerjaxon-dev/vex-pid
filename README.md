@@ -9,6 +9,11 @@ rig is a separate ESP32-C3 firmware that fuses an MPU-6050 at 200 Hz and streams
 telemetry to a browser dashboard — it exists to measure what the robot actually
 does, independent of the V5 brain.
 
+> **Before anything moves: read [TESTING_SAFETY.md](TESTING_SAFETY.md).** Every
+> number in this robot — speeds, ramps, current limits — was picked at a desk. It
+> has never been run. The note is the wheels-off-the-floor, raise-one-thing-at-a-
+> time procedure, and it is the point where you should stop and ask.
+
 ---
 
 ## Repository layout
@@ -19,6 +24,7 @@ include/            PROS robot — headers
   pid.hpp             PIDController: P/I/D/F, clamped integral, settle timer
   robot.hpp           Robot — owns subsystems, IMU, logger, auton state machine
   control_feel.hpp    Stick deadband, two-zone curve, slew rate limit, arcade mix
+  strain_guard.hpp    Current + encoder strain sensing, easing and current limits
   data_logger.hpp     CSV telemetry logger
   subsystems/
     drive_base.hpp      Differential drive + heading correction
@@ -34,8 +40,13 @@ src/                PROS robot — implementation
   subsystems/*.cpp    Subsystem implementations
 
 tools/              Build-time helpers (not part of the robot)
+  get_pros_headers.sh Downloads the real PROS headers into .pros_headers/
   syntax_check.sh     Compile-checks every C++ file with clang, no PROS needed
-  pros_stub/pros/     Stand-in PROS headers that make that possible
+  feel_test.sh        Builds and runs feel_test.cpp on this machine
+  feel_test.cpp       37 checks of the stick curve and the strain guard
+  pros_stub/pros/     Fallback stand-in headers, copied from the real API
+
+TESTING_SAFETY.md     Read before the first run of anything
 
 mpu6050_test/       ESP32-C3 + MPU-6050 IMU dashboard (PlatformIO)
 README.md             Wiring, CSV format, pattern-detection thresholds
@@ -96,7 +107,7 @@ touching the controller.
 
 ### Subsystems
 
-**Drive base** (`drive_base`) — differential drive over a `pros::Motor_Group`
+**Drive base** (`drive_base`) — differential drive over a `pros::MotorGroup`
 per side, using the V5 IMU for heading.
 
 - `drive_straight(inches)` runs the straight PID on average wheel position
@@ -119,21 +130,42 @@ tuning starts from.
 **Cascade lift** (`cascade`) — a linear cascade driven through a position PID
 on extension in inches.
 
-- Extension is clamped to `max_extension_inches`, and `manual_control`
-  additionally refuses to drive further past a soft limit in either direction.
+- Extension is clamped to `max_extension_inches`.
 - `gravity_feedforward` is added to the PID output so the controller does not
   have to build integral error just to hold the lift up against gravity.
-- Four named presets (`presets[4]`), selected by the controller's face buttons.
-- The output is clamped **after** `gravity_feedforward` is added, and then cast
-  to the `std::int8_t` that `Motor_Group::move()` takes. The PID's own output is
-  already limited to ±127, so adding the 8.0 feedforward could reach 135 — which
-  does not fit in an `int8_t`, which is undefined behaviour, and which on the ARM
-  wrapped round to **−121**. Any saturating upward command, such as pressing a
-  preset from rest, would have driven the arm **down** at nearly full power.
-- A **software floor** at the bottom of the travel (`kCascadeFloorInches`,
+- Four named presets (`presets[4]`). They are **autonomous only** now — the
+  driver drives the arm with L1 and L2 instead, so as far as driver control is
+  concerned they no longer exist, but `move_to_preset()` is still the shortest
+  way to say "go to the scoring height" in a routine.
+- The output is clamped **after** `gravity_feedforward` is added. The PID's own
+  output is limited to ±127, so adding the 8.0 feedforward could reach 135.
+- A **software floor** at the bottom of the travel (`config.cascade.floor_inches`,
   −0.02 in, matching the Python side's `CASCADE_LOWER_LIMIT` of −2.0° at 0.01
   in/degree) refuses a downward command once the arm is there. The arm has no
-  physical stopper.
+  physical stopper: driven past the bottom the chain can come off the sprocket,
+  and that is not something a match can recover from.
+- Approaching the floor the arm is asked for `creep_speed_percent` (10) instead
+  of `manual_speed_percent` (40), over the last `creep_band_inches` (0.25 in), so
+  it can settle onto the floor rather than stopping a full-speed step above it.
+  When the floor does stop it, the ramp is **pinned to the crawl** rather than
+  left where it was or zeroed: leaving it let the arm set off again at whatever
+  number it happened to be holding, and zeroing it made the ramp start over from
+  nothing and push the arm down again, which stutters.
+- How far the arm will move in one pass is **measured, not assumed**: the driver
+  loop reads `pros::millis()` and passes the real elapsed seconds in, and
+  `CASCADE_DEG_PER_SECOND`-style arithmetic turns the command into inches of
+  travel. A pass that overruns — the brain is busy, the screen is being redrawn —
+  would otherwise move the arm further than the ramp believed, which is exactly
+  how the floor gets overshot.
+- A **strain guard** (`strain_guard.hpp`, shared with the claw) watches the
+  current *and* the encoder on every manual pass. Over `guard.strain_amps` for
+  `strain_loops` passes, or told to move and not moving for `blocked_loops`
+  passes, it eases the command back (down to `guard.ease_speed`, never to zero)
+  and lowers the per-motor current limit to `guard.ease_amps`. It recovers more
+  slowly than it eases. It judges the *eased* command, not the raw one, so it
+  cannot chase itself into a stall it invented; and parking on the floor calls
+  `clear_block()`, because being stopped on purpose is not a mechanism in
+  trouble.
 - `initialize()` **tares the encoder**, so "the bottom" means the same thing on
   every run and not just the first run after a power cycle. The arm has to be
   resting at its bottom when the program starts.
@@ -146,13 +178,23 @@ on extension in inches.
   only the target field was not enough: `update()` runs the PID, and the PID
   still held its old target, so the next tick drove the arm back towards it.
 
-**Claw** (`claw`) — one motor, two end states.
+**Claw** (`claw`) — one motor, two end states, and a held-button grip.
 
-`open()` and `close()` are not symmetric. Opening is timed (`open_time_ms`).
-Closing watches current draw: once past `stall_check_after_ms`, a draw above
-`stall_current_ma` means the claw has closed on something, so it backs off to
-`hold_power` and reports done. `close_timeout_ms` (2 s) falls back to the same
-holding power, so a missed detection cannot stall the motor indefinitely.
+For the driver: **R1 closes, R2 opens, both held**, through the same
+manual path as the cascade — a ramp, a gentle percentage, and the strain guard.
+A claw closed on a game object is a motor that has been told to turn and has
+stopped, which is exactly what the guard's encoder half is for: it eases the
+squeeze back and caps the current, so the claw holds firmly without cooking the
+motor over a two-minute match. That is the "limit the grip but do not burn the
+motors" behaviour, and it needs no threshold picked by hand — the encoder half is
+a fraction of what was asked for, not an amp figure.
+
+For autonomous, `open()` and `close()` are one-shot and not symmetric. Opening is
+timed (`open_time_ms`). Closing watches current draw: once past
+`stall_check_after_ms`, a draw above `stall_current_ma` means the claw has closed
+on something, so it backs off to `hold_power` and reports done. `close_timeout_ms`
+(2 s) falls back to the same holding power, so a missed detection cannot stall the
+motor indefinitely.
 
 `open()` and `close()` also **set `m_is_open` themselves**. `update()` branches
 on that flag, so leaving it over from the previous action ran the wrong branch:
@@ -168,6 +210,12 @@ the squeeze timeout in real time.
 **Toggle** (`toggle`) — a 3-position mechanism (yellow / red / blue) positioned
 by a PID on motor encoder angle, with a `ToggleState` enum so callers ask for a
 colour rather than a raw angle.
+
+For the driver it is **B one way, Y the other, held** — a plain ramped
+percentage, deliberately with no stick curve and no strain guard. It is a "go
+that way" button rather than a speed control, and it has hard stops at both ends
+of its travel. Entering the manual path adopts the current angle as the PID's
+target, so letting go does not snap it back to wherever the PID last aimed.
 
 `stop()` re-points the position PID at the current angle for the same reason the
 cascade does: zeroing the motors alone left the PID aiming at its old target, so
@@ -202,14 +250,39 @@ is the write-up of why each piece is there.
   detail and add lag.
 
 The throttle and the turn stick go through the **same** curve and the same
-limiter. Only the ceiling is separate (`drive_speed_max` and `turn_speed_max`,
-both 51 = 40% of 127), so turning can be made slower than driving without
+limiter. Only the ceiling is separate (`drive_speed_max` = 51, 40% of 127, and
+`turn_speed_max` = 44, 35%), so turning can be made slower than driving without
 touching the shape. All the numbers live in `config.drive` in `src/main.cpp`.
 
-**Holding L2 stops every motor at once.** `L2` is the only button this layout
-leaves free — L1 is the claw, R1 and R2 the cascade, A/B/X/Y the four presets and
-Up/Down/Left the toggle — and it is a trigger, so both thumbs stay on the sticks
-while it is held. Three details make it a stop rather than a suggestion:
+**Why this is the shape the driver asked for.** Press the stick a little and the
+robot moves slowly and precisely; push it all the way to the stop and only then
+does it reach the ceiling. That is the two-zone curve above, not the ramp: the
+ramp only limits how fast the command may *change*, so it decides how quickly the
+robot accelerates for a given stick position. The curve decides which stick
+position means which speed. A lightness of touch that used to mean 100% of the
+ceiling now means well under half of it.
+
+**The controls.** The drive project and the Python drive v2 now have the same
+map:
+
+| Input | Action |
+|---|---|
+| Left stick up/down | Throttle |
+| Right stick left/right | Turn |
+| L1 / L2 | Cascade up / down, held |
+| R1 / R2 | Claw close / open, held |
+| B / Y | Toggle one way / the other, held |
+| **A** | **Full stop** |
+| X, Up, Down, Left | Unused |
+
+Every one of the mechanism buttons is **held, not latched**: letting go passes a
+demand of zero, and the ramp eases the mechanism down from wherever it was rather
+than stopping it dead. The arm, the claw and the toggle hold their position when
+the button comes off, because their motors are in brake-hold mode.
+
+**Holding A stops every motor at once.** A is deliberately the one button that is
+not next to a mechanism control, and it can be hit with a thumb without letting
+go of a stick. Three details make it a stop rather than a suggestion:
 
 - it is read **before** the sticks and before the IMU check, so it works from the
   moment the program starts, not only once the gyro has finished calibrating;
@@ -217,21 +290,19 @@ while it is held. Three details make it a stop rather than a suggestion:
   because the PIDs are what actually write the motors: a stop that only zeroed
   the driver's own outputs would be overwritten by `m_cascade.update()` on the
   very next pass;
-- every ramp is reset, so letting go drives on from zero instead of jumping
-  straight back to whatever the sticks are asking for.
+- every ramp and every guard is cleared, so letting go drives on from zero
+  instead of jumping straight back to whatever the sticks are asking for.
 
 It works in autonomous too, and `stop_all()` — drive, cascade, claw, toggle — is
 the single definition of "stopped", used by the stop button and by `disabled()`.
 
-The Python **drive v2** goes further than this port does. It also watches each
-mechanism's current *and* its encoder, eases a mechanism that is being held back,
-caps the claw's torque, and keeps the cascade above a software floor — and it
-times each pass round the loop rather than assuming 20 ms, so the floor's
-prediction of where the arm will be still holds when the brain is busy. The C++
-side here is the stick feel only. Two Python files back it up:
-`vexcode-python/TESTING_SAFETY.md`, for testing it without breaking the robot,
-and `vexcode-python/cascade_robot_amps.py`, a measuring tool that reports what
-each mechanism really draws — worth running before trusting any of v2's current
+Both the cascade and the claw also watch themselves while the driver is holding a
+button, through `strain_guard.hpp`: if a mechanism draws too much current, or is
+told to move and does not, the command is eased back and the per-motor current
+limit is lowered. The Python drive v2 does the same thing with the same numbers;
+`vexcode-python/CONTROL_FEEL.md` is the write-up of the reasoning, and
+`vexcode-python/cascade_robot_amps.py` is the tool that measures what each
+mechanism really draws — worth running before trusting any of the current
 thresholds, because every one of them was picked by hand.
 
 ### Autonomous
@@ -246,7 +317,7 @@ Every waiting state polls `is_at_target()`, and the only timeout used to live
 inside `DriveToMidfield`: if an earlier target never settled, the sequence would
 never reach it and the robot would drive at full power until the match ended.
 Fifteen seconds after the routine starts, whatever state it is in, it calls
-`stop_all()` and marks itself `Done`. Holding L2 gives up immediately.
+`stop_all()` and marks itself `Done`. Holding A gives up immediately.
 
 ### Telemetry
 
@@ -274,23 +345,67 @@ The `Makefile` compiles `src/*.cpp` and `src/**/*.cpp` with `-std=c++20
 > PROS source starts with `#include "main.h"`, and the file did not exist here,
 > in the old Desktop copy, or on GitHub. The compiler stopped on
 > `src/main.cpp:1` with `fatal error: 'main.h' file not found` before reading a
-> line of robot code. It has been written (`#pragma once` plus `pros/api.h`) and
-> the project now gets past that point.
+> line of robot code. It has been written and now gets past that point. It also
+> had the wrong include in it at first: it said `#include "pros/api.h"`, and no
+> such header exists. The kernel ships a **top-level** `api.h` — its own
+> `main.h` template is `#define PROS_USE_LITERALS` then `#include "api.h"` — and
+> the file here is now the same shape.
 
 **Checking it without the PROS toolchain.** There is no VEX kernel and no ARM
-toolchain on a Mac, so `tools/syntax_check.sh` compiles every C++ file with
-clang against the stand-in headers in `tools/pros_stub/`, which declare the slice
-of the PROS API this project actually uses:
+toolchain on a Mac, so the check works in two steps.
+
+First, get the real headers. `tools/get_pros_headers.sh` downloads the PROS
+4.1.0 source and keeps its `include/`:
+
+```bash
+./tools/get_pros_headers.sh      # default tag 4.1.0; pass another if you like
+```
+
+They land in `tools/.pros_headers/` and are git-ignored — they are somebody
+else's source, not ours.
+
+Then `tools/syntax_check.sh` compiles every C++ file in `src/` with clang against
+**those real headers**:
 
 ```bash
 ./tools/syntax_check.sh
 ```
 
-That **is** a real check of this project's code — it catches syntax errors,
-typos, missing includes and type mistakes such as the `int8_t` overflow above,
-and the whole project currently passes it clean under `-Wall -Wextra`. It is
-**not** the real API: passing does not prove the project links or runs on the
-brain, and only a build in PROS can tell you that.
+It falls back to the stand-in headers in `tools/pros_stub/` if you have not
+fetched the real ones, and says so loudly when it does:
+`NOTE: this was NOT checked against the real PROS API.` The current state is
+**0 errors, 0 warnings in this project's own files against the real PROS 4.1.0
+headers** (the only output is warnings inside the kernel's own headers, e.g. an
+unused parameter in `llemu.h`).
+
+> **A correction to an earlier claim.** The first version of this check used only
+> hand-written stand-in headers, and one of them had been written to match what
+> this project *called* — it declared `class Motor_Group` and
+> `move(std::int8_t)`. A check written from the code it is checking cannot catch
+> the code being wrong, and this one did not: the real kernel has **no**
+> `Motor_Group` (it is `MotorGroup`, in `pros/motor_group.hpp`) and
+> `move()` takes a `std::int32_t`. Every use of the old name was a compile error
+> on the real robot. The stand-in headers have been rewritten from the real API
+> and the script now prefers the real ones, so this cannot happen silently again.
+>
+> The same mistake produced a wrong story about an `int8_t` overflow: a
+> saturating 135 into `move()` does **not** wrap round to −121. `move()` takes an
+> `int32_t` and the kernel clamps the value to ±127, so it means "full speed",
+> as intended. The explicit `std::clamp` in the PID paths is worth keeping as
+> hygiene, but it was never the bug it was described as.
+
+`tools/syntax_check.sh` proves this project's own code parses, includes what it
+uses, and type-checks against the real API. It does **not** link, and it does not
+run on the brain: only a build in PROS can tell you that.
+
+`tools/feel_test.sh` is the other half — a host test of the pure-logic headers
+(the stick curve and the strain guard) with 37 assertions, which is how the
+curve's numbers below were measured:
+
+```bash
+./tools/feel_test.sh
+# → 37 checks, 0 failed
+```
 
 > **Note on port numbers.** `src/main.cpp` is the only file that mentions ports.
 > The assignment there is the one measured on the real robot: drive left 11/17,

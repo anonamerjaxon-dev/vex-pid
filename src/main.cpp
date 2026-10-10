@@ -68,10 +68,22 @@ void initialize() {
     config.cascade.floor_inches = -0.02;
     config.cascade.safety_factor = 1.5;
 
-    // The strain guard. watch out for the units: the cascade reads the whole
-    // pair added together, so strain_amps is a pair total, but the current
-    // LIMIT is applied to each motor separately, so ease_amps and relaxed_amps
-    // are per motor.
+    // The strain guard. It runs on the ENCODER alone by default: "told to move
+    // and not moving". That needs no measured number, so there is nothing to
+    // guess before the first run, and a jam - the fault that actually breaks
+    // things - is still caught.
+    //
+    // watch_current = false turns the current half off, and the amp numbers
+    // below are then only a note of where the thresholds WOULD go. Turn it on
+    // only after measuring the real currents with the amps tool (see
+    // include/amps_tool.hpp): a guessed threshold that is too low will
+    // under-power a heavy lift, and one that is too high will not catch a
+    // motor that is drawing far too much while still turning.
+    //
+    // Watch the units: the cascade reads the whole pair added together, so
+    // strain_amps is a pair total, but the current LIMIT is applied to each
+    // motor separately, so ease_amps and relaxed_amps are per motor.
+    config.cascade.guard.watch_current = false;
     config.cascade.guard.strain_amps = 2.0;    // the pair, added up
     config.cascade.guard.ease_amps = 1.0;      // each motor, while straining
     config.cascade.guard.relaxed_amps = 2.5;   // each motor, when fine
@@ -98,6 +110,7 @@ void initialize() {
     // The guard treats that as the grip: it eases the squeeze back and caps the
     // current, so the claw holds firmly without cooking the motor. One motor
     // here, so every number is that motor.
+    config.claw.guard.watch_current = false;   // encoder alone, see above
     config.claw.guard.strain_amps = 1.5;
     config.claw.guard.ease_amps = 1.0;
     config.claw.guard.relaxed_amps = 2.0;

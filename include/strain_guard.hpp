@@ -41,6 +41,15 @@ struct StrainGuardSettings {
     double ease_amps = 1.0;
     double relaxed_amps = 2.5;
 
+    // Whether to judge strain by current at all. Set this to false and the
+    // guard runs on the encoder alone: it still catches a mechanism that is
+    // told to move and cannot, which needs no measurement and no guessed
+    // number, but it can no longer notice a mechanism that is drawing far too
+    // much while still turning. That is the honest trade - a guessed amp
+    // threshold can under-power a heavy lift on the first run, and a jam is
+    // the fault that actually breaks things.
+    bool watch_current = true;
+
     // The lowest the gentle factor may fall, as a fraction of what was asked
     // for. It never reaches zero: a mechanism that is eased right down and
     // still cannot move is a mechanism that needs looking at, and a stall at
@@ -106,7 +115,8 @@ public:
             return m_factor;
         }
 
-        const bool over_amps = amps >= m_settings.strain_amps;
+        const bool over_amps = m_settings.watch_current
+                               && amps >= m_settings.strain_amps;
         const bool not_moving = blocked(commanded, velocity);
 
         if (over_amps || not_moving) {

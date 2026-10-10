@@ -46,7 +46,7 @@ tools/              Build-time helpers (not part of the robot)
   get_pros_headers.sh Downloads the real PROS headers into .pros_headers/
   syntax_check.sh     Compile-checks every C++ file with clang, no PROS needed
   feel_test.sh        Builds and runs feel_test.cpp on this machine
-  feel_test.cpp       40 checks of the stick curve and the strain guard
+  feel_test.cpp       45 checks of the stick curve and the strain guard
   pros_stub/pros/     Fallback stand-in headers, copied from the real API
 
 TESTING_SAFETY.md     Read before the first run of anything
@@ -338,17 +338,30 @@ leaves the robot stopped for the next enable.
 "stopped", used by the stop button and by `disabled()`.
 
 Both the cascade and the claw also watch themselves while the driver is holding a
-button, through `strain_guard.hpp`: if a mechanism draws too much current, or is
-told to move and does not, the command is eased back and the per-motor current
-limit is lowered. The top two lines of the brain screen show what each guarded
-mechanism is drawing and how far it has been eased (`casc 12.34 A  ease  35%`,
-and `BLOCKED` when it is being told to move and not moving), so the automatic
-slow-down can be watched rather than taken on trust.
+button, through `strain_guard.hpp`: if a mechanism is told to move and does not,
+and — only when it is switched on — if it draws too much current, the command is
+eased back and the per-motor current limit is lowered. The top two lines of the
+brain screen show what each guarded mechanism is drawing and how far it has been
+eased (`casc 12.34 A  ease  35%`, and `BLOCKED` when it is being told to move and
+not moving), so the automatic slow-down can be watched rather than taken on
+trust.
+
+**It runs on the encoder alone by default** — `guard.watch_current = false` for
+both mechanisms in `src/main.cpp`. The encoder half ("told to move and not
+moving") needs no measured number at all, so there is nothing to calibrate before
+the first drive, and a jam is still caught. The current half is the part that
+would need a threshold you do not have yet, and switching it on with a guessed
+number risks under-powering a heavy lift. Turn it on once you have measured the
+real currents; `README`'s **Measuring the currents** below is how.
 
 The Python drive v2 does the same thing with the same numbers;
 `vexcode-python/CONTROL_FEEL.md` is the write-up of the reasoning.
 
 ### Measuring the currents
+
+**You do not need to measure anything to drive.** The guard ships with its
+current half switched off, so the driver is protected by the encoder alone. This
+section is only for turning the current half on later.
 
 Every current threshold in the project — `guard.strain_amps`, `guard.ease_amps`,
 `guard.relaxed_amps`, the claw's `stall_current_ma` — was picked by hand. To

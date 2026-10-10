@@ -83,15 +83,19 @@ a power cycle.
 2. **Check each mechanism alone, slowly.** One button at a time, at a distance,
    with nothing in the way. Does the claw open when you press R2 and close on R1?
    Does the cascade go up on L1 and down on L2? Does the toggle go both ways?
-3. **Measure the currents** before trusting any current threshold. Every number
-   in `src/main.cpp` with `_amps` in it was picked by hand. There are two tools
-   that turn those guesses into measurements, one for each half of the project:
-   set `kRunAmpsTool = true` in `src/main.cpp` and download to run the C++
-   measuring program (see **Measuring the currents** in the
+3. **Measure the currents — optional, and only if you want the current half of
+   the strain guard on.** It ships **off** (`guard.watch_current = false`), so
+   the driver is protected by the encoder alone and there is nothing you have to
+   calibrate first. If you do want the current half, every number in
+   `src/main.cpp` with `_amps` in it was picked by hand and needs measuring, with
+   one of two tools — set `kRunAmpsTool = true` in `src/main.cpp` and download to
+   run the C++ measuring program (see **Measuring the currents** in the
    [README](README.md)), or use `vexcode-python/cascade_robot_amps.py` (the
    procedure is in [`vexcode-python/README.md`](vexcode-python/README.md) under
    **Measuring the real currents**). Either way, hold a button, load the
-   mechanism gently by hand, and write down the peak.
+   mechanism gently by hand, and write down the peak. Then set the thresholds
+   above the worst normal peak and below the fault, and turn `watch_current`
+   back on.
 4. **Drive with the wheels still off the floor.** Small stick movements. Does it
    start slowly and only reach its top speed at full stick, or does it jump?
 5. **Clear a large empty space and drive on the floor.** Press A once if it gets
@@ -121,7 +125,7 @@ There is no autonomous routine to test.
 | Checked | How |
 |---|---|
 | The code parses and type-checks against the real PROS 4.1.0 API | `./tools/syntax_check.sh` — 0 errors, 0 warnings in this project's own files |
-| The stick curve, the rate limiter and the strain guard behave | `./tools/feel_test.sh` — 40 checks, 0 failed, including a sweep proving the command never exceeds its ceiling |
+| The stick curve, the rate limiter and the strain guard behave | `./tools/feel_test.sh` — 45 checks, 0 failed, including a sweep proving the command never exceeds its ceiling, and the encoder-only guard |
 | The Python drive v2 logic | a fake-VEX bench harness: the ramp, the curve, the floor, the strain and encoder guards, and the full stop |
 | The Python amps tool | a fake-VEX harness: the readings, the button handling and the stop |
 

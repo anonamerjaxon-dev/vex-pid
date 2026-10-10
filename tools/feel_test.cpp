@@ -339,6 +339,43 @@ int main() {
               "is well under the raw command");
     }
 
+    // watch_current = false: the encoder half must still work on its own. This
+    // is the default in src/main.cpp, because the encoder needs no measured
+    // number - only the current half did.
+    {
+        StrainGuardSettings settings;
+        settings.watch_current = false;
+        StrainGuard guard(settings);
+        check(close(guard.factor(), 1.0),
+              "with the current half switched off the guard still starts at "
+              "full speed");
+
+        // An amp reading far over the threshold must now be ignored...
+        for (int i = 0; i < 30; i++) {
+            guard.update(6.0, 40.0, 40.0);
+        }
+        check(!guard.straining() && close(guard.factor(), 1.0),
+              "and a huge current reading on its own no longer eases it "
+              "(factor " + num(guard.factor()) + ")");
+        check(guard.limit_ma() == 2500,
+              "nor lowers the per-motor ceiling ("
+                  + std::to_string(guard.limit_ma()) + " mA)");
+
+        // ...but a mechanism that cannot move is still caught.
+        for (int i = 0; i < 10; i++) {
+            guard.update(0.0, 0.0, 40.0);
+        }
+        check(guard.blocked(),
+              "the encoder half still catches a mechanism that is told to move "
+              "and is not moving");
+        for (int i = 0; i < 5; i++) {
+            guard.update(0.0, 0.0, 40.0);
+        }
+        check(guard.factor() < 1.0,
+              "and still eases it back, on the encoder alone (factor "
+                  + num(guard.factor()) + ")");
+    }
+
     // -----------------------------------------------------------------------
     std::printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

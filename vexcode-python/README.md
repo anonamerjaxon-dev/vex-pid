@@ -31,6 +31,7 @@ tool** (`Cascade Robot Amps`, see [Measuring the real currents](#measuring-the-r
 - [Controls](#controls)
 - [Ports](#ports)
 - [Drive program](#drive-program)
+- [Drive live angles](#drive-live-angles)
 - [Drive v2](#drive-v2)
 - [Measuring the real currents](#measuring-the-real-currents)
 - [Motor test program](#motor-test-program)
@@ -67,6 +68,8 @@ tool** (`Cascade Robot Amps`, see [Measuring the real currents](#measuring-the-r
 | `cascade_robot_drive_v2.py` | Drive v2 as a plain Python file. |
 | `Cascade Robot Amps.v5python` | **Amps measuring tool.** Open this in VEXcode. Reads what each mechanism really draws, so the thresholds stop being guesses. |
 | `cascade_robot_amps.py` | The amps tool as a plain Python file. |
+| `Cascade Robot Drive Limits.v5python` | **Drive live angles.** Drive v1 plus a live angle for every motor and optional soft limits. Toggle on Right / Y. |
+| `cascade_robot_drive_limits.py` | Drive live angles as a plain Python file. |
 | `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
 | `TESTING_SAFETY.md` | Read this before the first run of anything. |
@@ -192,6 +195,50 @@ short version.
 > `Cascade_Robot_Drive` and `Cascade_Robot_Test`, and both hold a copy. Put
 > whichever program you want to run into that file - it is a plain copy of
 > the `.py`.
+
+## Drive live angles
+
+`cascade_robot_drive_limits.py` (`Cascade Robot Drive Limits.v5python`) is the
+next version of the drive program. It drives exactly like drive v1, with three
+changes:
+
+- **The toggle is on Right / Y** instead of Up / Down. Right turns it one way,
+  Y the other way.
+- **Every motor's angle is on the brain screen, live.** It refreshes ten times a
+  second. The cascade, toggle and claw come first, then the four drive motors:
+
+  ```
+  LIVE ANGLES (deg)   slowest pass 10 ms
+  Motor         angle   min   max  limit
+  Cascade L 13    720     0   720  none
+  Cascade R 2     720     0   720  none
+  Toggle 18        0     0     0  none
+  ...
+  ```
+
+  Each angle starts at **0 when the program starts** and goes **up** when the
+  motor turns the way its button asks: cascade up (L1), claw close (R1), toggle
+  Right, drive forward. `min` and `max` are the lowest and highest it has been
+  this run. The controller shows the short version: cascade, toggle and claw
+  angles. **Start every run with the cascade all the way down** (and the claw
+  and toggle in the same place each time) so the numbers mean the same thing.
+- **Optional soft limits.** Each mechanism motor has a `..._LOW` and `..._HIGH`
+  setting, all `None` (off) to begin with. To set the top of the cascade: lift it
+  as high as it may safely go, read its angle, and type a number a little below
+  that into `CASCADE_LEFT_13_HIGH` and `CASCADE_RIGHT_2_HIGH`. The arm slows to
+  `LIMIT_SLOW_SPEED` over the last `LIMIT_SLOW_BAND` degrees and stops at the
+  limit, and the screen says `AT LIMIT`. A pair stops as soon as either motor
+  reaches its limit.
+
+**Less delay.** The ~0.3 s lag between the controller and the robot came mostly
+from the screens. Drive v1 redrew the brain *and* the controller screen every
+time a number on them changed, which is every pass while a stick is moving, and
+the controller screen goes over the radio. This version redraws the brain 10
+times a second and the controller 4 times a second, never both in one pass. It
+also reads the controller every 10 ms instead of 20, and sends the drive a
+voltage (`DRIVE_USE_VOLTAGE = True`), which the motors react to straight away.
+Set it to `False` to go back to v1's feel. The top line of the brain shows the
+slowest pass in milliseconds: it should stay near 10.
 
 ## Drive v2
 
@@ -834,3 +881,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-08 | Added the **amps measuring tool**: `cascade_robot_amps.py` / `Cascade Robot Amps.v5python`. Hold A/B/X/Y and it shows what each mechanism really draws (`now` / `peak` / `steady`, plus the per-motor figure in brackets), so the v2 thresholds can stop being guesses. No torque ceiling, on purpose — a ceiling would clamp the very number you are reading. `sync_files.py` now handles five programs. |
 | 2026-10-09 | **A full stop button.** In drive v2, hold **B** and every motor on the robot stops at once: every ramp is pinned to zero, the five motors are told to stop once, both strain guards are cleared and the screen says `***  FULL  STOP  ***`. Let go and you drive on from zero, with nothing to jump. A, B, X, Y, Left and Right are free in v1 and v2, so `STOP_BUTTON` can name any of them. Both programs look their button up **once** when they start: a misspelt name now prints a message and **refuses to drive** instead of throwing `AttributeError` part-way through a run. In the amps tool any d-pad button is the stop, it is checked before the test buttons, and a test cut short by it deliberately does not leave a peak behind. |
 | 2026-10-09 | **The PROS C++ stopped being able to hurt the robot, and can now be checked.** `include/main.h` was missing — the project had **never compiled at all** — and is now written; `tools/syntax_check.sh` compile-checks every C++ file with clang against stand-in headers. The cascade's `move()` could be handed 135 where a `std::int8_t` (−128..127) was expected, which on the ARM wraps to **−121**: pressing a preset from rest would drive the arm **down** at nearly full power. It is clamped after the feedforward now, with a software floor at the bottom of the travel. The arm also used to keep running at full power for ever if you let go of R1 while a preset was still travelling; the claw's open and close ran each other's branch; the toggle came back to life by itself after `disabled()` was called, because the position PID still had its old target. All three are fixed, and **L2 is a new full stop** in the C++ driver control. |
+| 2026-10-10 | Added **drive live angles** (`cascade_robot_drive_limits.py`), the next version of drive v1: toggle moved to **Right / Y**, a live angle for every motor on the brain (10 times a second) and controller, optional soft limits per mechanism motor (all off), and less control delay (screens redraw less often, 10 ms loop, voltage drive). Bench-tested against a simulated robot only. |

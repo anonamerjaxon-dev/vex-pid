@@ -23,6 +23,7 @@ PROGRAMS = [
     ("cascade_robot_drive.py", "Cascade Robot Drive.v5python"),
     ("cascade_robot_drive_v2.py", "Cascade Robot Drive V2.v5python"),
     ("cascade_robot_amps.py", "Cascade Robot Amps.v5python"),
+    ("cascade_robot_drive_limits.py", "Cascade Robot Drive Limits.v5python"),
 ]
 
 

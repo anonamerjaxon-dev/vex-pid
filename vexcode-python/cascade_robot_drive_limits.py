@@ -53,8 +53,8 @@ print("\033[2J")
 #	Right ...... toggle one way      Y .......... toggle the other way
 #
 #	Every motor's count starts at 0 when the program starts, so start
-#	every run with the cascade all the way DOWN (and the claw and the
-#	toggle in the same place each time).
+#	every run with the cascade all the way DOWN and the claw fully OPEN
+#	(and the toggle in the same place each time).
 #
 # ------------------------------------------
 
@@ -76,9 +76,9 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 # a ceiling - the stick goes from nothing up to this number, never past it.
 DRIVE_SPEED = 40
 TURN_SPEED = 40
-CASCADE_SPEED = 40
-CLAW_SPEED = 40
-TOGGLE_SPEED = 40
+CASCADE_SPEED = 55   # cascade, claw and toggle raised from 40 on 2026-10-10
+CLAW_SPEED = 55
+TOGGLE_SPEED = 55
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5
@@ -97,29 +97,42 @@ DEADBAND = 5
 #   4. Type a number a little below that into CASCADE_LEFT_13_HIGH and
 #      CASCADE_RIGHT_2_HIGH, download, and check that it stops there.
 #
-# None = no limit. Every limit starts as None, so nothing is limited until
-# you type a number in.
+# None = no limit.
 #   LOW  = the smallest angle allowed (cascade down, claw open, toggle Y)
 #   HIGH = the biggest angle allowed (cascade up, claw close, toggle Right)
 # The two motors of a pair are on one shaft, so the pair stops as soon as
 # EITHER motor reaches its limit.
-CASCADE_LEFT_13_LOW = None
-CASCADE_LEFT_13_HIGH = None
-CASCADE_RIGHT_2_LOW = None
-CASCADE_RIGHT_2_HIGH = None
+# Cascade, measured on the robot (2026-10-10): from the base to the top the
+# left motor turned 755 degrees (-9 to 746) and the right one 759 (-15 to
+# 744). That interval is the constraint: started at the base, the cascade
+# may only move between 0 and the interval, less a margin at the top.
+CASCADE_TRAVEL = 755      # base to top, the shorter of the two sides
+CASCADE_MARGIN = 25       # stop this many degrees short of the top
+CASCADE_LEFT_13_LOW = 0
+CASCADE_LEFT_13_HIGH = CASCADE_TRAVEL - CASCADE_MARGIN     # 730
+CASCADE_RIGHT_2_LOW = 0
+CASCADE_RIGHT_2_HIGH = CASCADE_TRAVEL - CASCADE_MARGIN     # 730
 TOGGLE_18_LOW = None
 TOGGLE_18_HIGH = None
 TOGGLE_8_LOW = None
 TOGGLE_8_HIGH = None
-CLAW_16_LOW = None
-CLAW_16_HIGH = None
+# Claw, measured on the robot (2026-10-10): -16 fully open to 176 closed.
+# Started fully open, it may only move between 0 and that interval, less a
+# margin at the closed end.
+CLAW_TRAVEL = 192         # fully open to fully closed
+CLAW_MARGIN = 12          # stop this many degrees short of fully closed
+CLAW_16_LOW = 0
+CLAW_16_HIGH = CLAW_TRAVEL - CLAW_MARGIN                   # 180
 
 # Near a limit the part slows down so it does not reach the limit at full
-# speed: within LIMIT_SLOW_BAND degrees it goes no faster than
-# LIMIT_SLOW_SPEED percent. The cascade goes up against gravity, so if it
-# stops moving in that last stretch, raise LIMIT_SLOW_SPEED.
-# LIMIT_SLOW_BAND = 0 turns the slowing off.
-LIMIT_SLOW_BAND = 60
+# speed: within its slow band (degrees) it goes no faster than
+# LIMIT_SLOW_SPEED percent. Each mechanism has its own band, because the
+# claw only turns about 190 degrees end to end while the cascade turns 750.
+# The cascade goes up against gravity, so if it stops moving in that last
+# stretch, raise LIMIT_SLOW_SPEED. A band of 0 turns the slowing off.
+CASCADE_SLOW_BAND = 60
+TOGGLE_SLOW_BAND = 20
+CLAW_SLOW_BAND = 20
 LIMIT_SLOW_SPEED = 20
 
 # A part keeps moving for a moment after the program decides to stop it,
@@ -127,11 +140,14 @@ LIMIT_SLOW_SPEED = 20
 LIMIT_SAFETY_FACTOR = 1.5
 
 # --- Response (less delay between the controller and the robot) ---
-# True = the drive is sent a voltage, which the motors react to at once.
-# False = the drive asks for a speed, like drive v1, and each motor's own
-# speed controller catches up a moment later. Letting go of the sticks
-# brakes either way.
-DRIVE_USE_VOLTAGE = True
+# False = the drive asks for a speed, exactly like drive v1. This is the
+# one that has been driven forward AND backward on the robot.
+# True = the drive is sent a voltage instead, which the motors react to a
+# little sooner. It was the default for one test and the robot would not
+# drive backward, so it now sends the direction separately (FORWARD or
+# REVERSE with a positive voltage). Try it again only on blocks.
+# Letting go of the sticks brakes either way.
+DRIVE_USE_VOLTAGE = False
 
 # How often the program reads the controller, in milliseconds
 LOOP_MS = 10
@@ -139,7 +155,7 @@ LOOP_MS = 10
 # Drawing a screen is slow, and the controller's screen goes over the
 # radio. Drive v1 redrew both whenever a number on them changed, which is
 # every pass while the sticks are moving, and that held up every pass. Now
-# each screen only redraws this often.
+# each screen only redraws this often. This is the main fix for the delay.
 BRAIN_REDRAW_MS = 100
 CONTROLLER_REDRAW_MS = 250
 
@@ -199,6 +215,12 @@ def arcade(forward, turn):
         right = right * scale
     return left, right
 
+def spin_volts(group, volts):
+    if volts < 0:
+        group.spin(REVERSE, -volts, VoltageUnits.VOLT)
+    else:
+        group.spin(FORWARD, volts, VoltageUnits.VOLT)
+
 def drive_wheels(left, right, was_driving):
     # Send both sides of the drive. Sticks let go = stop once, so the BRAKE
     # stopping mode holds the robot still. Returns whether it is driving.
@@ -208,8 +230,9 @@ def drive_wheels(left, right, was_driving):
             right_drive.stop()
         return False
     if DRIVE_USE_VOLTAGE:
-        left_drive.spin(FORWARD, left * 12.0 / 100.0, VoltageUnits.VOLT)
-        right_drive.spin(FORWARD, right * 12.0 / 100.0, VoltageUnits.VOLT)
+        # Never a negative voltage: backward is REVERSE with a positive number
+        spin_volts(left_drive, left * 12.0 / 100.0)
+        spin_volts(right_drive, right * 12.0 / 100.0)
     else:
         left_drive.spin(FORWARD, left, PERCENT)
         right_drive.spin(FORWARD, right, PERCENT)
@@ -242,11 +265,12 @@ class Tracked:
     # One motor: where it is now, the lowest and highest it has been since
     # the program started, and its limits.
 
-    def __init__(self, name, motor, low, high, gears):
+    def __init__(self, name, motor, low, high, gears, slow_band=0):
         self.name = name
         self.motor = motor
         self.low = low
         self.high = high
+        self.slow_band = slow_band
         self.deg_per_s = full_speed_deg_per_s(gears)
         self.now = 0.0
         self.min_seen = 0.0
@@ -287,7 +311,7 @@ def limit_speed(parts, speed, pass_s):
 
     for part in parts:
         room = part.room(speed)
-        if room is not None and LIMIT_SLOW_BAND > 0 and room <= LIMIT_SLOW_BAND:
+        if room is not None and part.slow_band > 0 and room <= part.slow_band:
             if speed > 0:
                 speed = min(speed, LIMIT_SLOW_SPEED)
             else:
@@ -308,7 +332,8 @@ def limit_speed(parts, speed, pass_s):
             return 0
     return speed
 
-# (name on the screen, motor, lowest allowed, highest allowed, cartridge)
+# (name on the screen, motor, lowest allowed, highest allowed, cartridge,
+#  slow band)
 # LF/LB/RF/RB = left front, left back, right front, right back.
 # The drive wheels spin round and round, so they have no limits. They are
 # listed so you can see all four count up when you drive forward.
@@ -319,15 +344,19 @@ drive_parts = [
     Tracked("Drive RB 10", drive_right_back_10, None, None, DRIVE_GEARS),
 ]
 cascade_parts = [
-    Tracked("Cascade L 13", cascade_left_13, CASCADE_LEFT_13_LOW, CASCADE_LEFT_13_HIGH, CASCADE_GEARS),
-    Tracked("Cascade R 2", cascade_right_2, CASCADE_RIGHT_2_LOW, CASCADE_RIGHT_2_HIGH, CASCADE_GEARS),
+    Tracked("Cascade L 13", cascade_left_13, CASCADE_LEFT_13_LOW, CASCADE_LEFT_13_HIGH,
+            CASCADE_GEARS, CASCADE_SLOW_BAND),
+    Tracked("Cascade R 2", cascade_right_2, CASCADE_RIGHT_2_LOW, CASCADE_RIGHT_2_HIGH,
+            CASCADE_GEARS, CASCADE_SLOW_BAND),
 ]
 toggle_parts = [
-    Tracked("Toggle 18", toggle_18, TOGGLE_18_LOW, TOGGLE_18_HIGH, GearSetting.RATIO_18_1),
-    Tracked("Toggle 8", toggle_8, TOGGLE_8_LOW, TOGGLE_8_HIGH, GearSetting.RATIO_18_1),
+    Tracked("Toggle 18", toggle_18, TOGGLE_18_LOW, TOGGLE_18_HIGH,
+            GearSetting.RATIO_18_1, TOGGLE_SLOW_BAND),
+    Tracked("Toggle 8", toggle_8, TOGGLE_8_LOW, TOGGLE_8_HIGH,
+            GearSetting.RATIO_18_1, TOGGLE_SLOW_BAND),
 ]
 claw_parts = [
-    Tracked("Claw 16", claw_16, CLAW_16_LOW, CLAW_16_HIGH, CLAW_GEARS),
+    Tracked("Claw 16", claw_16, CLAW_16_LOW, CLAW_16_HIGH, CLAW_GEARS, CLAW_SLOW_BAND),
 ]
 mechanism_parts = cascade_parts + toggle_parts + claw_parts
 # The mechanisms are listed first on the screen, the drive underneath
@@ -436,7 +465,7 @@ def driver():
             else:
                 lines.append("Drive L " + "%+d" % int(left) + "  R " + "%+d" % int(right)
                              + "   casc " + direction_text(cascade_speed, "UP", "DOWN"))
-            lines.append("0 = start position. Start cascade DOWN.")
+            lines.append("Start: cascade DOWN, claw OPEN.")
             show_brain(lines)
             slowest_pass_ms = 0
         elif last_controller_ms is None or now_ms - last_controller_ms >= CONTROLLER_REDRAW_MS:

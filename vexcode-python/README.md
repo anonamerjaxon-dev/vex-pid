@@ -220,24 +220,32 @@ changes:
   motor turns the way its button asks: cascade up (L1), claw close (R1), toggle
   Right, drive forward. `min` and `max` are the lowest and highest it has been
   this run. The controller shows the short version: cascade, toggle and claw
-  angles. **Start every run with the cascade all the way down** (and the claw
-  and toggle in the same place each time) so the numbers mean the same thing.
-- **Optional soft limits.** Each mechanism motor has a `..._LOW` and `..._HIGH`
-  setting, all `None` (off) to begin with. To set the top of the cascade: lift it
-  as high as it may safely go, read its angle, and type a number a little below
-  that into `CASCADE_LEFT_13_HIGH` and `CASCADE_RIGHT_2_HIGH`. The arm slows to
-  `LIMIT_SLOW_SPEED` over the last `LIMIT_SLOW_BAND` degrees and stops at the
-  limit, and the screen says `AT LIMIT`. A pair stops as soon as either motor
-  reaches its limit.
+  angles. **Start every run with the cascade all the way down and the claw
+  fully open** (and the toggle in the same place each time) so the numbers mean
+  the same thing.
+- **Soft limits.** Each mechanism motor has a `..._LOW` and `..._HIGH` setting
+  (`None` = no limit). The limits come from the measured interval:
+  `CASCADE_TRAVEL` (755°, base to top: the left side measured −9 to 746, the
+  right −15 to 744) minus `CASCADE_MARGIN` (25°) gives **0 to 730 on both
+  cascade motors**, and `CLAW_TRAVEL` (192°, −16 open to 176 closed) minus
+  `CLAW_MARGIN` (12°) gives **0 (open) to 180 (closed)** for the claw. If you
+  measure again, change the travel number, not the limits. The toggle is still
+  `None`; set it the same way: move it as far as it may safely go, read its angle,
+  and type a number a little inside that. Each part stops at its limit and the
+  screen says `AT LIMIT`. A pair stops as soon as either motor reaches its
+  limit. Near a limit each part slows to `LIMIT_SLOW_SPEED` (20) over
+  its own slow band: `CASCADE_SLOW_BAND` 60°, `CLAW_SLOW_BAND` and
+  `TOGGLE_SLOW_BAND` 20°.
 
 **Less delay.** The ~0.3 s lag between the controller and the robot came mostly
 from the screens. Drive v1 redrew the brain *and* the controller screen every
 time a number on them changed, which is every pass while a stick is moving, and
 the controller screen goes over the radio. This version redraws the brain 10
 times a second and the controller 4 times a second, never both in one pass. It
-also reads the controller every 10 ms instead of 20, and sends the drive a
-voltage (`DRIVE_USE_VOLTAGE = True`), which the motors react to straight away.
-Set it to `False` to go back to v1's feel. The top line of the brain shows the
+also reads the controller every 10 ms instead of 20. The drive asks for a speed
+exactly like v1 (`DRIVE_USE_VOLTAGE = False`). Voltage drive was the default for
+one test and the robot would not drive backward; it now sends the direction
+separately, but try `True` again only with the wheels off the floor. The top line of the brain shows the
 slowest pass in milliseconds: it should stay near 10.
 
 ## Drive v2
@@ -882,3 +890,7 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-09 | **A full stop button.** In drive v2, hold **B** and every motor on the robot stops at once: every ramp is pinned to zero, the five motors are told to stop once, both strain guards are cleared and the screen says `***  FULL  STOP  ***`. Let go and you drive on from zero, with nothing to jump. A, B, X, Y, Left and Right are free in v1 and v2, so `STOP_BUTTON` can name any of them. Both programs look their button up **once** when they start: a misspelt name now prints a message and **refuses to drive** instead of throwing `AttributeError` part-way through a run. In the amps tool any d-pad button is the stop, it is checked before the test buttons, and a test cut short by it deliberately does not leave a peak behind. |
 | 2026-10-09 | **The PROS C++ stopped being able to hurt the robot, and can now be checked.** `include/main.h` was missing — the project had **never compiled at all** — and is now written; `tools/syntax_check.sh` compile-checks every C++ file with clang against stand-in headers. The cascade's `move()` could be handed 135 where a `std::int8_t` (−128..127) was expected, which on the ARM wraps to **−121**: pressing a preset from rest would drive the arm **down** at nearly full power. It is clamped after the feedforward now, with a software floor at the bottom of the travel. The arm also used to keep running at full power for ever if you let go of R1 while a preset was still travelling; the claw's open and close ran each other's branch; the toggle came back to life by itself after `disabled()` was called, because the position PID still had its old target. All three are fixed, and **L2 is a new full stop** in the C++ driver control. |
 | 2026-10-10 | Added **drive live angles** (`cascade_robot_drive_limits.py`), the next version of drive v1: toggle moved to **Right / Y**, a live angle for every motor on the brain (10 times a second) and controller, optional soft limits per mechanism motor (all off), and less control delay (screens redraw less often, 10 ms loop, voltage drive). Bench-tested against a simulated robot only. |
+| 2026-10-10 | **Cascade limits set from the robot:** the left side travelled 755° from the base (−9 to 746) and the right side 759° (−15 to 744). Drive live angles now limits both sides to **0–730** (25° under the shorter side). Start each run with the cascade at the base. |
+| 2026-10-10 | Drive live angles: **cascade, claw and toggle sped up from 40 to 55** (`CASCADE_SPEED`, `CLAW_SPEED`, `TOGGLE_SPEED`). Drive and turn stay at 40. The cascade still slows to 20 over the last 60° before a limit. |
+| 2026-10-10 | **Claw limits set from the robot:** −16 fully open to 176 closed (192°). Drive live angles now limits the claw to **0–180**, starting fully open. Each mechanism has its own slow band near its limits (cascade 60°, claw and toggle 20°), so the claw is not slow for a third of its travel. |
+| 2026-10-10 | **Drive live angles drives backward again.** With voltage drive on, the robot would not go backward, so the drive is back to v1's speed command (`DRIVE_USE_VOLTAGE = False`), and the voltage option now sends REVERSE with a positive voltage instead of a negative one. Cascade and claw limits now come from `CASCADE_TRAVEL` / `CLAW_TRAVEL` minus a margin. The team starts every run at the cascade's minimum. |

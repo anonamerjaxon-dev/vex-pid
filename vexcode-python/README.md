@@ -234,13 +234,17 @@ changes:
   | `CLAW_CLOSE_BUTTON` | `"R2"` | button that closes the claw |
   | `CLAW_TURN_DEGREES` | `180` | how far one press turns it (fully open to fully closed measured 192°) |
   | `CLAW_OPEN_DIRECTION` / `CLAW_CLOSE_DIRECTION` | `FORWARD` / `REVERSE` | swap them if the open button closes the claw |
-  | `CLAW_SPEED` | `55` | how fast it turns |
-  | `CLAW_MAX_AMPS` | `1.2` | current ceiling (same as drive v2), so it can keep squeezing a piece without overheating |
+  | `CLAW_SPEED` | `55` | how fast it turns (100 = as fast as the motor goes) |
 
   Button names: `"L1" "L2" "R1" "R2" "Up" "Down" "Left" "Right" "X" "Y" "A" "B"`
-  - don't pick one the cascade (L1, L2) or toggle (Right, Y) already uses.
-  With no limit, pressing open when the claw is already open makes it push
-  against its end (at most 1.2 A) until you press close.
+  (capitals don't matter) - don't pick one the cascade (L1, L2) or toggle
+  (Right, Y) already uses. A name that isn't a button stops the program with a
+  message on the brain saying which setting to fix.
+  The claw has **no current or torque limit** - it always has the motor's full
+  strength, and at startup every motor is set back to 100% in case an earlier
+  program (drive v2) left a limit on it. With no limit, pressing open when the
+  claw is already open makes it push against its end at full strength until you
+  press close, and squeezing a piece for a long time warms the motor up.
 - **Every motor's angle is on the brain screen, live.** It refreshes ten times a
   second. The cascade, toggle and claw come first, then the four drive motors:
 
@@ -276,12 +280,18 @@ changes:
 from the screens. Drive v1 redrew the brain *and* the controller screen every
 time a number on them changed, which is every pass while a stick is moving, and
 the controller screen goes over the radio. This version redraws the brain 10
-times a second and the controller 4 times a second, never both in one pass. It
-also reads the controller every 10 ms instead of 20. The drive asks for a speed
+times a second, and sends the controller at most **one changed line** every
+100 ms (never the whole screen, never in the same pass as the brain), because the
+controller screen shares the radio with the sticks and buttons. It also reads
+the controller every 10 ms instead of 20. The drive asks for a speed
 exactly like v1 (`DRIVE_USE_VOLTAGE = False`). Voltage drive was the default for
 one test and the robot would not drive backward; it now sends the direction
 separately, but try `True` again only with the wheels off the floor. The top line of the brain shows the
 slowest pass in milliseconds: it should stay near 10.
+
+**Unplugged motors show up.** If the brain loses a motor (a loose cable - the
+claw is on the long 1500 mm one), its row says `UNPLUGGED - check cable` and the
+bottom line names it, instead of the motor just not responding.
 
 ## Drive v2
 
@@ -931,3 +941,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-10 | **Drive live angles drives backward again.** With voltage drive on, the robot would not go backward, so the drive is back to v1's speed command (`DRIVE_USE_VOLTAGE = False`), and the voltage option now sends REVERSE with a positive voltage instead of a negative one. Cascade and claw limits now come from `CASCADE_TRAVEL` / `CLAW_TRAVEL` minus a margin. The team starts every run at the cascade's minimum. |
 | 2026-10-10 | Drive live angles: **the claw is now one press, with no limit.** R1 opens it and R2 closes it; each press turns it `CLAW_TURN_DEGREES` (180) by itself and it holds there. The buttons (`CLAW_OPEN_BUTTON`, `CLAW_CLOSE_BUTTON`), the turn, its direction and a 1.2 A ceiling (`CLAW_MAX_AMPS`) are settings at the top of the file. The claw limits (`CLAW_TRAVEL`, `CLAW_MARGIN`, `CLAW_SLOW_BAND`) are gone. On the robot a plus speed had been *opening* the claw, so open is FORWARD; the 10-08 direction test recorded plus as closing, so the motor test and the other programs still label it that way. |
 | 2026-10-10 | Drive live angles: **exponential stick curve.** The drive used to scale straight from the stick, so it felt like full speed by half stick. Now the speed grows exponentially and the top speed (40) only comes at the end of the stick: `DRIVE_CURVE` and `TURN_CURVE` = 2 (half stick = 25% of the top speed; 0 = the old straight line, bigger = gentler). |
+| 2026-10-10 | Drive live angles, **full check:** the claw's 1.2 A current limit (`CLAW_MAX_AMPS`) is **gone** - it was making the claw weak and slow; every motor is set back to full strength at startup in case drive v2 left a limit on it. The controller screen now gets at most one changed line every 100 ms instead of clearing and redrawing all three (less radio traffic next to the sticks and buttons). Unplugged motors show `UNPLUGGED` on the brain. Button names in the claw settings ignore capitals, and a wrong one stops with a clear message instead of a `KeyError`. |

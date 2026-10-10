@@ -123,12 +123,9 @@ CLAW_TURN_DEGREES = 180
 CLAW_OPEN_DIRECTION = FORWARD
 CLAW_CLOSE_DIRECTION = REVERSE
 
-# The most current the claw motor may draw, in amps. When it closes on a
-# game piece it cannot finish its turn, so it keeps squeezing - this
-# ceiling is what lets it hold the piece without overheating. Same number
-# as drive v2. If it lets pieces slip, raise it a little (the motor's own
-# maximum is 2.5).
-CLAW_MAX_AMPS = 1.2
+# The claw has no current or torque limit: it always has the motor's full
+# strength. The only thing that sets how fast it turns is CLAW_SPEED above
+# (100 = as fast as the motor goes).
 
 # --- Limits (optional - fill these in after testing) ---
 # The brain screen shows every motor's angle in degrees, refreshed ten
@@ -194,11 +191,13 @@ DRIVE_USE_VOLTAGE = False
 LOOP_MS = 10
 
 # Drawing a screen is slow, and the controller's screen goes over the
-# radio. Drive v1 redrew both whenever a number on them changed, which is
-# every pass while the sticks are moving, and that held up every pass. Now
-# each screen only redraws this often. This is the main fix for the delay.
+# radio - the same radio that brings the sticks and buttons to the robot.
+# Drive v1 redrew both whenever a number on them changed, which is every
+# pass while the sticks are moving, and that held up every pass. Now the
+# brain redraws this often, and the controller gets at most ONE changed
+# line this often (never the whole screen at once).
 BRAIN_REDRAW_MS = 100
-CONTROLLER_REDRAW_MS = 250
+CONTROLLER_LINE_MS = 100
 
 # --- Devices ---
 # Front/back/left/right are as the robot drives forward.
@@ -237,17 +236,31 @@ claw = MotorGroup(claw_16)     # one motor, but the driver code talks to it as "
 # Port 9: a single device nobody has identified yet. Not used.
 
 # --- Claw buttons ---
-# The buttons named in the claw settings
+# The buttons named in the claw settings. Capitals don't matter ("r1" and
+# "R1" are the same); a name that isn't a button stops the program with a
+# message on the brain saying which setting to fix.
 BUTTONS = {
     "L1": controller_1.buttonL1, "L2": controller_1.buttonL2,
     "R1": controller_1.buttonR1, "R2": controller_1.buttonR2,
-    "Up": controller_1.buttonUp, "Down": controller_1.buttonDown,
-    "Left": controller_1.buttonLeft, "Right": controller_1.buttonRight,
+    "UP": controller_1.buttonUp, "DOWN": controller_1.buttonDown,
+    "LEFT": controller_1.buttonLeft, "RIGHT": controller_1.buttonRight,
     "X": controller_1.buttonX, "Y": controller_1.buttonY,
     "A": controller_1.buttonA, "B": controller_1.buttonB,
 }
-claw_open_button = BUTTONS[CLAW_OPEN_BUTTON]
-claw_close_button = BUTTONS[CLAW_CLOSE_BUTTON]
+
+def button_named(name, setting):
+    key = str(name).strip().upper()
+    if key not in BUTTONS:
+        brain.screen.clear_screen()
+        brain.screen.set_cursor(1, 1)
+        brain.screen.print("%s = %s is not a button." % (setting, name))
+        brain.screen.set_cursor(2, 1)
+        brain.screen.print("Use L1 L2 R1 R2 Up Down Left Right X Y A B")
+        raise ValueError("%s = %s is not a button" % (setting, name))
+    return BUTTONS[key]
+
+claw_open_button = button_named(CLAW_OPEN_BUTTON, "CLAW_OPEN_BUTTON")
+claw_close_button = button_named(CLAW_CLOSE_BUTTON, "CLAW_CLOSE_BUTTON")
 
 # --- Helpers ---
 
@@ -340,6 +353,13 @@ class Tracked:
         self.min_seen = 0.0
         self.max_seen = 0.0
         self.at_limit = False
+
+    def connected(self):
+        # False if the brain can't see the motor (cable out or loose)
+        try:
+            return self.motor.installed()
+        except Exception:
+            return True
 
     def read(self):
         self.now = self.motor.position(DEGREES)
@@ -435,13 +455,15 @@ def show_brain(lines):
         brain.screen.clear_row()
         brain.screen.print(lines[i])
 
-def show_controller(lines):
-    controller_1.screen.clear_screen()
-    for i in range(len(lines)):
-        controller_1.screen.set_cursor(i + 1, 1)
-        controller_1.screen.print(lines[i])
+def show_controller_line(row, text):
+    # One line, padded with spaces so it covers whatever was there before
+    # (no clearing the screen, which would be another radio message)
+    controller_1.screen.set_cursor(row, 1)
+    controller_1.screen.print(pad(text[:19], 19))
 
-def motor_line(part):
+def motor_line(part, plugged_in):
+    if not plugged_in:
+        return pad(part.name, 13) + "  UNPLUGGED - check cable"
     flag = " STOP" if part.at_limit else ""
     return (pad(part.name, 13)
             + "%6d%6d%6d" % (int(part.now), int(part.min_seen), int(part.max_seen))
@@ -466,7 +488,7 @@ def driver():
     last_ms = None
     last_brain_ms = None
     last_controller_ms = None
-    shown_controller = None
+    shown_controller = [None, None, None]
     slowest_pass_ms = 0
 
     while True:
@@ -526,14 +548,18 @@ def driver():
             last_brain_ms = now_ms
             for part in drive_parts:
                 part.read()
+            plugged = [part.connected() for part in all_parts]
+            unplugged = [all_parts[i].name for i in range(len(all_parts)) if not plugged[i]]
             stopped_at = [part.name for part in mechanism_parts if part.at_limit]
             lines = [
                 "LIVE ANGLES (deg)   slowest pass %d ms" % slowest_pass_ms,
                 pad("Motor", 13) + " angle   min   max  limit",
             ]
-            for part in all_parts:
-                lines.append(motor_line(part))
-            if stopped_at:
+            for i in range(len(all_parts)):
+                lines.append(motor_line(all_parts[i], plugged[i]))
+            if unplugged:
+                lines.append(("UNPLUGGED: " + ", ".join(unplugged))[:46])
+            elif stopped_at:
                 lines.append("AT LIMIT: " + ", ".join(stopped_at))
             else:
                 lines.append("Drive L " + "%+d" % int(left) + "  R " + "%+d" % int(right)
@@ -542,7 +568,7 @@ def driver():
             lines.append("Start: cascade DOWN, claw OPEN.")
             show_brain(lines)
             slowest_pass_ms = 0
-        elif last_controller_ms is None or now_ms - last_controller_ms >= CONTROLLER_REDRAW_MS:
+        elif last_controller_ms is None or now_ms - last_controller_ms >= CONTROLLER_LINE_MS:
             last_controller_ms = now_ms
             third = "Claw %+d " % int(claw_parts[0].now) + claw_word
             if any(part.at_limit for part in mechanism_parts):
@@ -552,10 +578,13 @@ def driver():
                 "T18 %+d T8 %+d" % (int(toggle_parts[0].now), int(toggle_parts[1].now)),
                 third,
             ]
-            # Only send it if it changed: every line is a message over the radio
-            if controller_lines != shown_controller:
-                shown_controller = controller_lines
-                show_controller(controller_lines)
+            # Send only the first line that changed: every line is a message
+            # over the radio, so at most one goes each time
+            for i in range(3):
+                if controller_lines[i] != shown_controller[i]:
+                    shown_controller[i] = controller_lines[i]
+                    show_controller_line(i + 1, controller_lines[i])
+                    break
 
         wait(LOOP_MS, MSEC)
 
@@ -575,10 +604,14 @@ for motor in (cascade_left_13, cascade_right_2,
 for part in all_parts:
     part.motor.set_position(0, DEGREES)
 
-# The claw makes each turn at CLAW_SPEED, and never draws more than
-# CLAW_MAX_AMPS, so it can keep squeezing a game piece
+# Full strength for every motor. A motor can keep a torque limit from the
+# last program that ran (drive v2 limits the claw and the cascade), so it
+# is set back to 100% here.
+for part in all_parts:
+    part.motor.set_max_torque(100, PERCENT)
+
+# The claw makes each turn at CLAW_SPEED
 claw_16.set_velocity(CLAW_SPEED, PERCENT)
-claw_16.set_max_torque(CLAW_MAX_AMPS, CurrentUnits.AMP)
 
 brain.screen.set_font(FontType.MONO15)
 brain.screen.clear_screen()
@@ -586,6 +619,7 @@ brain.screen.print("CASCADE ROBOT - DRIVE LIVE ANGLES")
 brain.screen.set_cursor(2, 1)
 brain.screen.print("Starting...")
 
+controller_1.screen.clear_screen()
 controller_1.rumble(".")
 
 driver()

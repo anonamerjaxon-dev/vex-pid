@@ -68,7 +68,7 @@ tool** (`Cascade Robot Amps`, see [Measuring the real currents](#measuring-the-r
 | `cascade_robot_drive_v2.py` | Drive v2 as a plain Python file. |
 | `Cascade Robot Amps.v5python` | **Amps measuring tool.** Open this in VEXcode. Reads what each mechanism really draws, so the thresholds stop being guesses. |
 | `cascade_robot_amps.py` | The amps tool as a plain Python file. |
-| `Cascade Robot Drive Limits.v5python` | **Drive live angles.** Drive v1 plus a live angle for every motor and soft limits. Toggle on Right / Y; one press of R1 / R2 closes / opens the claw. |
+| `Cascade Robot Drive Limits.v5python` | **Drive live angles.** Drive v1 plus a live angle for every motor and soft limits. Toggle on Right / Y; one press of R1 / R2 turns the claw 180° open / closed. |
 | `cascade_robot_drive_limits.py` | Drive live angles as a plain Python file. |
 | `sync_files.py` | Copies changes between each `.py` and its `.v5python` (runs on your computer, not the robot). |
 | `README.md` | This handout. |
@@ -204,16 +204,24 @@ changes:
 
 - **The toggle is on Right / Y** instead of Up / Down. Right turns it one way,
   Y the other way.
-- **The claw is one press.** Press **R1 once and it closes**, press **R2 once
-  and it opens** - no need to hold the button. It turns by itself to
-  `CLAW_CLOSE_ANGLE` (−180) or `CLAW_OPEN_ANGLE` (0) and holds there. Pressing
-  the other button partway sends it back. When it closes on a game piece it
-  stops at the piece and keeps squeezing, with its current capped at
-  `CLAW_MAX_AMPS` (1.2 A, the same as drive v2) so the motor does not overheat.
-  The angles count from where the claw is at the start, so **start fully
-  open**. On this robot the claw's angle goes *down* as it closes (192° from
-  fully open to fully closed; the close angle stops 12° short). If R1 ever opens
-  it instead, make `CLAW_CLOSE_ANGLE` a plus number.
+- **The claw is one press, with no limit.** Press **R1 once and it opens**,
+  press **R2 once and it closes** - no need to hold the button. Each press
+  turns it `CLAW_TURN_DEGREES` (180) by itself, from wherever it is, and it
+  holds where it ends up. Everything is a setting at the top of the file:
+
+  | Setting | Now | What it does |
+  |---|---|---|
+  | `CLAW_OPEN_BUTTON` | `"R1"` | button that opens the claw |
+  | `CLAW_CLOSE_BUTTON` | `"R2"` | button that closes the claw |
+  | `CLAW_TURN_DEGREES` | `180` | how far one press turns it (fully open to fully closed measured 192°) |
+  | `CLAW_OPEN_DIRECTION` / `CLAW_CLOSE_DIRECTION` | `FORWARD` / `REVERSE` | swap them if the open button closes the claw |
+  | `CLAW_SPEED` | `55` | how fast it turns |
+  | `CLAW_MAX_AMPS` | `1.2` | current ceiling (same as drive v2), so it can keep squeezing a piece without overheating |
+
+  Button names: `"L1" "L2" "R1" "R2" "Up" "Down" "Left" "Right" "X" "Y" "A" "B"`
+  - don't pick one the cascade (L1, L2) or toggle (Right, Y) already uses.
+  With no limit, pressing open when the claw is already open makes it push
+  against its end (at most 1.2 A) until you press close.
 - **Every motor's angle is on the brain screen, live.** It refreshes ten times a
   second. The cascade, toggle and claw come first, then the four drive motors:
 
@@ -228,7 +236,7 @@ changes:
 
   Each angle starts at **0 when the program starts** and goes **up** when the
   motor turns the way its button asks: cascade up (L1), toggle Right, drive
-  forward (the claw goes down as it closes, see above). `min` and `max` are the lowest and highest it has been
+  forward, claw open (R1). `min` and `max` are the lowest and highest it has been
   this run. The controller shows the short version: cascade, toggle and claw
   angles. **Start every run with the cascade all the way down and the claw
   fully open** (and the toggle in the same place each time) so the numbers mean
@@ -238,8 +246,7 @@ changes:
   `CASCADE_TRAVEL` (755°, base to top: the left side measured −9 to 746, the
   right −15 to 744) minus `CASCADE_MARGIN` (25°) gives **0 to 730 on both
   cascade motors**. If you measure again, change the travel number, not the
-  limits. (The claw needs no limit any more: it only ever turns to its open or
-  close angle.) The toggle is still
+  limits. (The claw has no limit.) The toggle is still
   `None`; set it the same way: move it as far as it may safely go, read its angle,
   and type a number a little inside that. Each part stops at its limit and the
   screen says `AT LIMIT`. A pair stops as soon as either motor reaches its
@@ -903,4 +910,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-10 | Drive live angles: **cascade, claw and toggle sped up from 40 to 55** (`CASCADE_SPEED`, `CLAW_SPEED`, `TOGGLE_SPEED`). Drive and turn stay at 40. The cascade still slows to 20 over the last 60° before a limit. |
 | 2026-10-10 | **Claw limits set from the robot:** −16 fully open to 176 closed (192°). Drive live angles now limits the claw to **0–180**, starting fully open. Each mechanism has its own slow band near its limits (cascade 60°, claw and toggle 20°), so the claw is not slow for a third of its travel. |
 | 2026-10-10 | **Drive live angles drives backward again.** With voltage drive on, the robot would not go backward, so the drive is back to v1's speed command (`DRIVE_USE_VOLTAGE = False`), and the voltage option now sends REVERSE with a positive voltage instead of a negative one. Cascade and claw limits now come from `CASCADE_TRAVEL` / `CLAW_TRAVEL` minus a margin. The team starts every run at the cascade's minimum. |
-| 2026-10-10 | Drive live angles: **the claw is now one press.** R1 closes it, R2 opens it, and it turns by itself to `CLAW_CLOSE_ANGLE` (−180) / `CLAW_OPEN_ANGLE` (0) and holds, with a 1.2 A ceiling (`CLAW_MAX_AMPS`) so it can keep squeezing a piece. On the robot R1 had been *opening* the claw (a plus speed opens it), so the claw's angle goes down as it closes; the old `CLAW_TRAVEL` / `CLAW_MARGIN` limits and `CLAW_SLOW_BAND` are gone. Note: the 10-08 direction test recorded the claw's plus direction as closing, so the motor test and the other programs still label it that way. |
+| 2026-10-10 | Drive live angles: **the claw is now one press, with no limit.** R1 opens it and R2 closes it; each press turns it `CLAW_TURN_DEGREES` (180) by itself and it holds there. The buttons (`CLAW_OPEN_BUTTON`, `CLAW_CLOSE_BUTTON`), the turn, its direction and a 1.2 A ceiling (`CLAW_MAX_AMPS`) are settings at the top of the file. The claw limits (`CLAW_TRAVEL`, `CLAW_MARGIN`, `CLAW_SLOW_BAND`) are gone. On the robot a plus speed had been *opening* the claw, so open is FORWARD; the 10-08 direction test recorded plus as closing, so the motor test and the other programs still label it that way. |

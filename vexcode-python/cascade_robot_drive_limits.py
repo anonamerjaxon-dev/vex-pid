@@ -49,8 +49,9 @@ print("\033[2J")
 #	Left stick up/down ..... drive forward / backward
 #	Right stick left/right . turn left / right
 #	L1 ......... cascade up          L2 ......... cascade down
-#	R1 ......... claw close          R2 ......... claw open
-#	             (one press - the claw goes all the way by itself)
+#	R1 ......... claw open           R2 ......... claw close
+#	             (one press turns the claw CLAW_TURN_DEGREES by itself;
+#	              the buttons can be changed in the claw settings)
 #	Right ...... toggle one way      Y .......... toggle the other way
 #
 #	Every motor's count starts at 0 when the program starts, so start
@@ -78,32 +79,35 @@ CLAW_GEARS = GearSetting.RATIO_18_1
 DRIVE_SPEED = 40
 TURN_SPEED = 40
 CASCADE_SPEED = 55   # cascade, claw and toggle raised from 40 on 2026-10-10
-CLAW_SPEED = 55      # how fast the claw turns to its open / close angle
+CLAW_SPEED = 55      # how fast the claw turns after a press
 TOGGLE_SPEED = 55
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5
 
-# --- Claw: one press opens or closes it all the way ---
-# Press R1 once and the claw turns to CLAW_CLOSE_ANGLE by itself; press R2
-# once and it turns to CLAW_OPEN_ANGLE. No need to hold the button. It holds
-# there until the other button is pressed.
-#
-# The angles count from where the claw is when the program starts, so
-# start every run with the claw fully OPEN. On this robot the claw's angle
-# goes DOWN as it closes (R1 used to open it with a plus speed).
-# Measured on the robot (2026-10-10): 192 degrees from fully open to fully
-# closed. The close angle stops 12 short of that, so the claw is not jammed
-# into its end.
-#
-# To set them again: open the claw fully, start the program, close the claw
-# by hand or with R1, and read "Claw 16" on the brain screen. If R1 ever
-# opens the claw instead of closing it, make CLAW_CLOSE_ANGLE a plus number.
-CLAW_OPEN_ANGLE = 0
-CLAW_CLOSE_ANGLE = -180
+# --- Claw: one press turns it a set amount ---
+# Press the open button once and the claw turns CLAW_TURN_DEGREES the open
+# way by itself; press the close button once and it turns that much the
+# close way. No need to hold the button. Each press is one more turn of
+# CLAW_TURN_DEGREES from wherever the claw is - there is no limit.
+
+# Which buttons open and close the claw. Any of these names:
+#   "L1" "L2" "R1" "R2" "Up" "Down" "Left" "Right" "X" "Y" "A" "B"
+# Don't pick one the cascade (L1, L2) or the toggle (Right, Y) already uses.
+CLAW_OPEN_BUTTON = "R1"
+CLAW_CLOSE_BUTTON = "R2"
+
+# How many degrees one press turns the claw. The claw measured 192 degrees
+# from fully open to fully closed (2026-10-10).
+CLAW_TURN_DEGREES = 180
+
+# Which way the motor turns to open the claw. If the open button closes
+# it, swap FORWARD and REVERSE here.
+CLAW_OPEN_DIRECTION = FORWARD
+CLAW_CLOSE_DIRECTION = REVERSE
 
 # The most current the claw motor may draw, in amps. When it closes on a
-# game piece it cannot reach CLAW_CLOSE_ANGLE, so it keeps squeezing - this
+# game piece it cannot finish its turn, so it keeps squeezing - this
 # ceiling is what lets it hold the piece without overheating. Same number
 # as drive v2. If it lets pieces slip, raise it a little (the motor's own
 # maximum is 2.5).
@@ -149,8 +153,8 @@ TOGGLE_8_HIGH = None
 # toggle turns much less than the cascade's 750 degrees.
 # The cascade goes up against gravity, so if it stops moving in that last
 # stretch, raise LIMIT_SLOW_SPEED. A band of 0 turns the slowing off.
-# (The claw does not need one: the motor slows itself down as it reaches
-# its open or close angle.)
+# (The claw does not need one: the motor slows itself down at the end of
+# each turn.)
 CASCADE_SLOW_BAND = 60
 TOGGLE_SLOW_BAND = 20
 LIMIT_SLOW_SPEED = 20
@@ -214,6 +218,19 @@ claw = MotorGroup(claw_16)     # one motor, but the driver code talks to it as "
 
 # Port 6 is a communication device, not a motor. Ignore it.
 # Port 9: a single device nobody has identified yet. Not used.
+
+# --- Claw buttons ---
+# The buttons named in the claw settings
+BUTTONS = {
+    "L1": controller_1.buttonL1, "L2": controller_1.buttonL2,
+    "R1": controller_1.buttonR1, "R2": controller_1.buttonR2,
+    "Up": controller_1.buttonUp, "Down": controller_1.buttonDown,
+    "Left": controller_1.buttonLeft, "Right": controller_1.buttonRight,
+    "X": controller_1.buttonX, "Y": controller_1.buttonY,
+    "A": controller_1.buttonA, "B": controller_1.buttonB,
+}
+claw_open_button = BUTTONS[CLAW_OPEN_BUTTON]
+claw_close_button = BUTTONS[CLAW_CLOSE_BUTTON]
 
 # --- Helpers ---
 
@@ -375,12 +392,9 @@ toggle_parts = [
     Tracked("Toggle 8", toggle_8, TOGGLE_8_LOW, TOGGLE_8_HIGH,
             GearSetting.RATIO_18_1, TOGGLE_SLOW_BAND),
 ]
-# The claw is listed for its live angle. Its "limit" column shows the open
-# and close angles; it never goes past them because it only ever turns to one
-# of them.
+# The claw is listed for its live angle only: it has no limit
 claw_parts = [
-    Tracked("Claw 16", claw_16, min(CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE),
-            max(CLAW_OPEN_ANGLE, CLAW_CLOSE_ANGLE), CLAW_GEARS),
+    Tracked("Claw 16", claw_16, None, None, CLAW_GEARS),
 ]
 mechanism_parts = cascade_parts + toggle_parts + claw_parts
 # The mechanisms are listed first on the screen, the drive underneath
@@ -418,9 +432,9 @@ def direction_text(speed, plus_word, minus_word):
 def driver():
     driving = False
     cascade_moving = False
-    claw_closed = False      # which angle the claw was last sent to
-    r1_was_pressed = False
-    r2_was_pressed = False
+    claw_word = "-"          # the claw's last press: OPEN or CLOSE
+    open_was_pressed = False
+    close_was_pressed = False
     toggle_moving = False
     last_ms = None
     last_brain_ms = None
@@ -456,20 +470,20 @@ def driver():
         cascade_speed = limit_speed(cascade_parts, cascade_speed, pass_s)
         cascade_moving = run_group(cascade, cascade_speed, cascade_moving)
 
-        # --- Claw: one press of R1 closes it, one press of R2 opens it ---
+        # --- Claw: one press turns it CLAW_TURN_DEGREES open or closed ---
         # Only the moment a button goes down counts, so holding it does
-        # nothing more. The motor then turns to the angle by itself (it does
-        # not wait here) and holds it.
-        r1_pressed = controller_1.buttonR1.pressing()
-        r2_pressed = controller_1.buttonR2.pressing()
-        if r1_pressed and not r1_was_pressed:
-            claw_closed = True
-            claw_16.spin_to_position(CLAW_CLOSE_ANGLE, DEGREES, wait=False)
-        elif r2_pressed and not r2_was_pressed:
-            claw_closed = False
-            claw_16.spin_to_position(CLAW_OPEN_ANGLE, DEGREES, wait=False)
-        r1_was_pressed = r1_pressed
-        r2_was_pressed = r2_pressed
+        # nothing more. The motor then makes the turn by itself (it does not
+        # wait here) and holds where it ends up.
+        open_pressed = claw_open_button.pressing()
+        close_pressed = claw_close_button.pressing()
+        if open_pressed and not open_was_pressed:
+            claw_word = "OPEN"
+            claw_16.spin_for(CLAW_OPEN_DIRECTION, CLAW_TURN_DEGREES, DEGREES, wait=False)
+        elif close_pressed and not close_was_pressed:
+            claw_word = "CLOSE"
+            claw_16.spin_for(CLAW_CLOSE_DIRECTION, CLAW_TURN_DEGREES, DEGREES, wait=False)
+        open_was_pressed = open_pressed
+        close_was_pressed = close_pressed
 
         # --- Toggle: Right one way, Y the other way ---
         toggle_speed = 0
@@ -497,13 +511,13 @@ def driver():
             else:
                 lines.append("Drive L " + "%+d" % int(left) + "  R " + "%+d" % int(right)
                              + "   casc " + direction_text(cascade_speed, "UP", "DOWN")
-                             + "  claw " + ("CLOSE" if claw_closed else "OPEN"))
+                             + "  claw " + claw_word)
             lines.append("Start: cascade DOWN, claw OPEN.")
             show_brain(lines)
             slowest_pass_ms = 0
         elif last_controller_ms is None or now_ms - last_controller_ms >= CONTROLLER_REDRAW_MS:
             last_controller_ms = now_ms
-            third = "Claw %+d " % int(claw_parts[0].now) + ("CLOSE" if claw_closed else "OPEN")
+            third = "Claw %+d " % int(claw_parts[0].now) + claw_word
             if any(part.at_limit for part in mechanism_parts):
                 third = third + " LIM"
             controller_lines = [
@@ -534,8 +548,8 @@ for motor in (cascade_left_13, cascade_right_2,
 for part in all_parts:
     part.motor.set_position(0, DEGREES)
 
-# The claw turns to its open / close angle at CLAW_SPEED, and never draws
-# more than CLAW_MAX_AMPS, so it can keep squeezing a game piece
+# The claw makes each turn at CLAW_SPEED, and never draws more than
+# CLAW_MAX_AMPS, so it can keep squeezing a game piece
 claw_16.set_velocity(CLAW_SPEED, PERCENT)
 claw_16.set_max_torque(CLAW_MAX_AMPS, CurrentUnits.AMP)
 

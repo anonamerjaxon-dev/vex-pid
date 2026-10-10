@@ -74,8 +74,8 @@ CASCADE_GEARS = GearSetting.RATIO_36_1
 CLAW_GEARS = GearSetting.RATIO_18_1
 
 # How hard each part pushes when you hold its button (percent).
-# The drive sticks already scale themselves from 0 to 100, so these are
-# a ceiling - the stick goes from nothing up to this number, never past it.
+# For the drive these are the top speed, reached only with the stick
+# pushed all the way (see the stick curve below).
 DRIVE_SPEED = 40
 TURN_SPEED = 40
 CASCADE_SPEED = 55   # cascade, claw and toggle raised from 40 on 2026-10-10
@@ -84,6 +84,23 @@ TOGGLE_SPEED = 55
 
 # Ignore tiny stick movements so the robot does not creep when you let go
 DEADBAND = 5
+
+# --- Stick curve (how the sticks turn into speed) ---
+# A small push gives a small speed, and the top speed (DRIVE_SPEED or
+# TURN_SPEED) only comes with the stick pushed all the way to the end.
+# In between, the speed grows exponentially:
+#   speed = top speed x (e^(CURVE x push) - 1) / (e^CURVE - 1)
+# where push goes from 0 (just past the deadband) to 1 (stick at the end).
+# A bigger CURVE is gentler in the middle; 0 is a straight line (the old
+# feel). How much of the top speed you get:
+#   CURVE   stick 10%   25%   50%   75%   100%
+#     0           5%    21%   47%   74%   100%
+#     1           3%    14%   35%   63%   100%
+#     2           2%     8%   25%   53%   100%
+#     3           1%     5%   16%   43%   100%
+#     4           0%     2%   11%   34%   100%
+DRIVE_CURVE = 2     # left stick, forward / backward
+TURN_CURVE = 2      # right stick, turning
 
 # --- Claw: one press turns it a set amount ---
 # Press the open button once and the claw turns CLAW_TURN_DEGREES the open
@@ -234,10 +251,20 @@ claw_close_button = BUTTONS[CLAW_CLOSE_BUTTON]
 
 # --- Helpers ---
 
-def apply_deadband(value):
-    if abs(value) < DEADBAND:
+def stick_curve(value, curve, top_speed):
+    # Turn a stick position (-100 to 100) into a speed (-top_speed to
+    # top_speed) along the exponential curve in the settings
+    size = abs(value)
+    if size < DEADBAND:
         return 0
-    return value
+    push = min(1.0, (size - DEADBAND) / (100.0 - DEADBAND))
+    if curve == 0:
+        speed = push * top_speed
+    else:
+        speed = (math.exp(curve * push) - 1) / (math.exp(curve) - 1) * top_speed
+    if value < 0:
+        return -speed
+    return speed
 
 def arcade(forward, turn):
     # Split arcade: the left side gets forward + turn and the right side
@@ -456,8 +483,8 @@ def driver():
             part.read()
 
         # --- Split arcade drive ---
-        forward = apply_deadband(controller_1.axis3.position()) * DRIVE_SPEED / 100.0
-        turn = apply_deadband(controller_1.axis1.position()) * TURN_SPEED / 100.0
+        forward = stick_curve(controller_1.axis3.position(), DRIVE_CURVE, DRIVE_SPEED)
+        turn = stick_curve(controller_1.axis1.position(), TURN_CURVE, TURN_SPEED)
         left, right = arcade(forward, turn)
         driving = drive_wheels(left, right, driving)
 

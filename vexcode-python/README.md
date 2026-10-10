@@ -199,8 +199,27 @@ short version.
 ## Drive live angles
 
 `cascade_robot_drive_limits.py` (`Cascade Robot Drive Limits.v5python`) is the
-next version of the drive program. It drives exactly like drive v1, with four
+next version of the drive program. It drives like drive v1, with five
 changes:
+
+- **Exponential stick curve.** A small push gives a small speed, and the top
+  speed (`DRIVE_SPEED` / `TURN_SPEED`, 40) only comes with the stick pushed all
+  the way to the end. Before, the speed was a straight line from the stick.
+  In between it grows exponentially:
+  `speed = top speed × (e^(CURVE × push) − 1) / (e^CURVE − 1)`, where push goes
+  from 0 just past the deadband to 1 at the end of the stick. `DRIVE_CURVE`
+  (left stick) and `TURN_CURVE` (right stick) are both **2**; bigger is gentler
+  in the middle, 0 is the old straight line:
+
+  | CURVE | stick 10% | 25% | 50% | 75% | 100% |
+  |---|---|---|---|---|---|
+  | 0 | 5% | 21% | 47% | 74% | 100% |
+  | 1 | 3% | 14% | 35% | 63% | 100% |
+  | **2** | 2% | 8% | 25% | 53% | 100% |
+  | 3 | 1% | 5% | 16% | 43% | 100% |
+  | 4 | 0% | 2% | 11% | 34% | 100% |
+
+  (percent of the top speed, so half stick at curve 2 is 25% of 40 = 10% power)
 
 - **The toggle is on Right / Y** instead of Up / Down. Right turns it one way,
   Y the other way.
@@ -911,3 +930,4 @@ Add a line when you change something important (ports, gearing, gains, routines)
 | 2026-10-10 | **Claw limits set from the robot:** −16 fully open to 176 closed (192°). Drive live angles now limits the claw to **0–180**, starting fully open. Each mechanism has its own slow band near its limits (cascade 60°, claw and toggle 20°), so the claw is not slow for a third of its travel. |
 | 2026-10-10 | **Drive live angles drives backward again.** With voltage drive on, the robot would not go backward, so the drive is back to v1's speed command (`DRIVE_USE_VOLTAGE = False`), and the voltage option now sends REVERSE with a positive voltage instead of a negative one. Cascade and claw limits now come from `CASCADE_TRAVEL` / `CLAW_TRAVEL` minus a margin. The team starts every run at the cascade's minimum. |
 | 2026-10-10 | Drive live angles: **the claw is now one press, with no limit.** R1 opens it and R2 closes it; each press turns it `CLAW_TURN_DEGREES` (180) by itself and it holds there. The buttons (`CLAW_OPEN_BUTTON`, `CLAW_CLOSE_BUTTON`), the turn, its direction and a 1.2 A ceiling (`CLAW_MAX_AMPS`) are settings at the top of the file. The claw limits (`CLAW_TRAVEL`, `CLAW_MARGIN`, `CLAW_SLOW_BAND`) are gone. On the robot a plus speed had been *opening* the claw, so open is FORWARD; the 10-08 direction test recorded plus as closing, so the motor test and the other programs still label it that way. |
+| 2026-10-10 | Drive live angles: **exponential stick curve.** The drive used to scale straight from the stick, so it felt like full speed by half stick. Now the speed grows exponentially and the top speed (40) only comes at the end of the stick: `DRIVE_CURVE` and `TURN_CURVE` = 2 (half stick = 25% of the top speed; 0 = the old straight line, bigger = gentler). |

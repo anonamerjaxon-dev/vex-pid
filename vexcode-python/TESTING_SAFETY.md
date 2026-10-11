@@ -24,6 +24,11 @@ the program looks at, so they work even while something else is happening. Press
 it once with the wheels off the floor, before you need it, so you already know
 it works.
 
+> **Drive live angles has no stop button.** It relies on its measured soft
+> limits (`AT LIMIT` on the screen), which stop the mechanisms but not the
+> drive. The brain's own stop button — or switching the brain off — is the stop
+> while driving it. Keep it in reach.
+
 ## The rules
 
 1. **Wheels off the floor first.** Blocks, a box, an upside-down crate -

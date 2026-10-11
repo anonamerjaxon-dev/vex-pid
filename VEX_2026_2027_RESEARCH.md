@@ -110,7 +110,7 @@ All within R10 (88W total) and R11 (Subsystem 2 = drive = 44W < 55W limit).
 
 | Sensor | Required? | Port | Reason |
 |--------|-----------|------|--------|
-| **V5 Inertial Sensor (IMU)** | YES | TBD | Heading for turns, drive-straight correction |
+| **V5 Inertial Sensor (IMU)** | Not required by rules; **not installed** | free (3, 4, 5, 7, 12, 14, 15, 19–21) | Heading for turns, drive-straight correction — only if added later |
 | Vision Sensor | Recommended | TBD | Pin color detection, Goal finding |
 | Optical Sensor | Optional | TBD | Proximity + color for close-range detection |
 | GPS Sensor | Recommended (Skills) | TBD | Absolute field positioning |
@@ -646,13 +646,17 @@ AFTER DATA COLLECTION (on laptop):
 ### 6.5 ESP32 MPU6050 Wiring
 
 ```
-ESP32 C3 Super Mini    MPU6050
+ESP32 C3 Super Mini    MPU6050      (as built 2026-10-09, matches mpu6050_test/)
 ─────────────────     ───────
-       3.3V    ────── VCC
+       3.3V    ────── VCC          (3.3 V ONLY — never 5 V)
        GND     ────── GND
-       GPIO6   ────── SDA (I2C data)
-       GPIO7   ────── SCL (I2C clock)
+       GPIO5   ────── SDA (I2C data)
+       GPIO4   ────── SCL (I2C clock)
 ```
+
+> **Rule <R6> warning:** this rig is a second microcontroller. It may NOT be on the robot
+> during a match — not even as decoration. Practice/diagnosis only. The only legal gyro is a
+> V5 Inertial Sensor. See `RULES_CONFIGURATION.md`.
 
 ---
 
@@ -788,22 +792,25 @@ Robot
 
 ---
 
-## 9. Port Assignments (TBD)
+## 9. Port Assignments (measured 2026-10-08/10 — authoritative copy: `RULES_CONFIGURATION.md`)
 
-> **Fill in when robot is wired.** These are placeholder port numbers.
+| Motor/Sensor | Smart Port | Notes |
+|-------------|-----------|-------|
+| Drive Left Front | 11 | 11W, green cartridge, reversed |
+| Drive Left Back | 17 | 11W, green cartridge, reversed |
+| Drive Right Front | 1 | 11W, green cartridge |
+| Drive Right Back | 10 | 11W, green cartridge |
+| Cascade Motor A | 13 | 11W, red cartridge (36:1) |
+| Cascade Motor B | 2 | 11W, red cartridge (36:1) |
+| Claw Motor | 16 | green cartridge (18:1), on the 1500 mm cable |
+| Toggle Motor A | 18 | 5.5W |
+| Toggle Motor B | 8 | 5.5W |
+| Comm device | 6 | not a motor |
+| Radio | 9 | **confirmed 2026-10-11 — not an IMU. The robot has no IMU at all.** |
 
-| Motor/Sensor | Smart Port | Wire Port | Notes |
-|-------------|-----------|-----------|-------|
-| Drive Left Front | TBD | — | 11W, green cartridge, reversed |
-| Drive Left Back | TBD | — | 11W, green cartridge, reversed |
-| Drive Right Front | TBD | — | 11W, green cartridge |
-| Drive Right Back | TBD | — | 11W, green cartridge |
-| Cascade Motor A | TBD | — | 11W, red cartridge |
-| Cascade Motor B | TBD | — | 11W, red cartridge |
-| Claw Motor | TBD | — | 11W, green cartridge |
-| Toggle Motor A | TBD | — | 5.5W |
-| Toggle Motor B | TBD | — | 5.5W |
-| V5 IMU | — | TBD | 3-wire port |
+The brain has 21 Smart Ports (1–21); free: 3, 4, 5, 7, 12, 14, 15, 19, 20, 21.
+Note: the PROS project's `imu_port = 9` (`src/main.cpp:134`) is wrong and must be fixed
+before that code is ever downloaded.
 
 ---
 
@@ -811,11 +818,11 @@ Robot
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | ✅ Research game rules & document | Done |
+| 1 | ✅ Research game rules & document | Done (`RULES_CONFIGURATION.md`) |
 | 2 | ✅ Document motor API & data pipeline | Done |
 | 3 | ✅ Architecture & class design | Done |
-| 4 | ⬜ Fill in port assignments | Waiting on wiring |
+| 4 | ✅ Fill in port assignments | Done (§9 above) |
 | 5 | ⬜ Measure cascade inches/encoder-tick | Waiting on MPU6050 test runs |
 | 6 | ⬜ Rewrite code (fix bugs + new subsystems) | Next |
-| 7 | ⬜ Write ESP32 + MPU6050 firmware | After V5 code |
+| 7 | ✅ Write ESP32 + MPU6050 firmware | Done (`mpu6050_test/`) |
 | 8 | ⬜ Tune PID gains with MPU6050 data | After hardware tests |

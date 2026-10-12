@@ -313,7 +313,7 @@ SYNC_KP = 0.5
 # Front/back/left/right are as the robot drives forward.
 # The same ports and True/False as Cascade Robot Drive Limits, the program
 # that has been driven on the robot. If a motor turns the wrong way, flip
-# its True/False here AND in Drive Limits.
+# its True/False here AND in the other programs.
 #
 # Every pair on the same shaft has opposite True/False on the two sides,
 # because the two motors face each other across that shaft.
@@ -1150,8 +1150,8 @@ for part in all_parts:
     part.motor.set_position(0, DEGREES)
 
 # Full strength for every motor. A motor can keep a torque limit from the
-# last program that ran (an older program on the brain may have set one),
-# so it is set back to 100% here.
+# last program that ran (drive v2 limits the claw and the cascade), so it
+# is set back to 100% here.
 for part in all_parts:
     part.motor.set_max_torque(100, PERCENT)
 

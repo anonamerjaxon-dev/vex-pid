@@ -9,9 +9,9 @@ stick curve, same cascade limits.
 |---|---|
 | `Override Auton.v5python` | Open this in VEXcode V5 and download it |
 | `override_auton.py` | The same program as plain Python (easier to read) |
-| `sync_files.py` | Keeps each `.py` and its `.v5python` the same (both programs in this folder): `python3 sync_files.py from-py` after editing the .py, `from-vexcode` after saving in VEXcode, `check` to compare |
+| `sync_files.py` | Keeps each `.py` and its `.v5python` the same (every program in this folder): `python3 sync_files.py from-py` after editing the .py, `from-vexcode` after saving in VEXcode, `check` to compare |
 
-The ports, the driver controls and Drive Limits are in this folder's
+The ports, the driver controls and the other programs are in this folder's
 [README](README.md).
 
 > **Not tested on the robot yet.** The route was checked on a computer

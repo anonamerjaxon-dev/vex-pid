@@ -8,8 +8,10 @@
 # program stored inside it as one string ("textContent"), so GitHub can't
 # show it nicely - that's why there's also a plain .py copy.
 #
-# Each command does every program in PROGRAMS below (drive limits and the
-# Override Auton).
+# Each command does all four programs (drive v2, drive live angles, the
+# amps measuring tool and the Override Auton). The old match, motor-test and
+# plain-drive programs were removed from the repo on 2026-10-10 (the plain
+# drive survives as the git tag v1-drive-working-40).
 # This runs on your computer, not on the robot.
 
 import json
@@ -18,6 +20,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROGRAMS = [
+    ("cascade_robot_drive_v2.py", "Cascade Robot Drive V2.v5python"),
+    ("cascade_robot_amps.py", "Cascade Robot Amps.v5python"),
     ("cascade_robot_drive_limits.py", "Cascade Robot Drive Limits.v5python"),
     ("override_auton.py", "Override Auton.v5python"),
 ]

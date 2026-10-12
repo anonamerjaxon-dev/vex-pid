@@ -10,9 +10,13 @@ telemetry to a browser dashboard — it exists to measure what the robot actuall
 does, independent of the V5 brain.
 
 > **Before anything moves: read [TESTING_SAFETY.md](TESTING_SAFETY.md).** Every
-> number in this robot — speeds, ramps, current limits — was picked at a desk. It
-> has never been run. The note is the wheels-off-the-floor, raise-one-thing-at-a-
-> time procedure, and it is the point where you should stop and ask.
+> number in this robot — speeds, ramps, current limits — was picked at a desk.
+> Drive programs have since been driven on the robot (measured cascade travel,
+> measured claw travel), but every *current* threshold is still a guess until
+> the amps tool measures it. The note is the wheels-off-the-floor,
+> raise-one-thing-at-a-time procedure, and it is the point where you should stop
+> and ask. The staged procedure lives in [PID_TEST_PLAN.md](PID_TEST_PLAN.md);
+> the game-rules summary in [RULES_CONFIGURATION.md](RULES_CONFIGURATION.md).
 
 ---
 
@@ -50,6 +54,8 @@ tools/              Build-time helpers (not part of the robot)
   pros_stub/pros/     Fallback stand-in headers, copied from the real API
 
 TESTING_SAFETY.md     Read before the first run of anything
+PID_TEST_PLAN.md      Staged PID tuning plan: gates, thresholds, data to collect
+RULES_CONFIGURATION.md  Override v2.0 rules summary: ports, power budget, limits
 
 mpu6050_test/       ESP32-C3 + MPU-6050 IMU dashboard (PlatformIO)
 README.md             Wiring, CSV format, pattern-detection thresholds
@@ -60,16 +66,17 @@ test/test_motion.cpp  Host test harness (10 scenarios, 38 assertions)
 VEX_2026_2027_RESEARCH.md   Design notes: hardware, encoder math, PID tuning
 
 vexcode-python/     The same robot in VEXcode V5 Python (the team's handout)
-  cascade_robot_auton.py      Match program: driver control + PID autonomous
-  cascade_robot_test.py       Motor test — one button per motor, for wiring
-  cascade_robot_drive.py      Drive v1, the known-good backup
+  cascade_robot_drive_limits.py  Drive live angles — current driver: angles, limits, safety
   cascade_robot_drive_v2.py   Drive v2 — stick feel, strain sensing, soft floor
   cascade_robot_amps.py       Amps measuring tool — what each mechanism really draws
+  override_auton.py           Override Auton — the Override autonomous, plus drive
+                              live angles' driver control (the match program)
   *.v5python                  The files VEXcode opens (same programs)
   sync_files.py               Copies each .py into its .v5python
   README.md                   The handout: controls, ports, edits, troubleshooting
   TESTING_SAFETY.md           Read before the first run of anything
   CONTROL_FEEL.md             Why drive v2 feels the way it does
+  OVERRIDE_AUTON.md           The autonomous: field setup, route, what to measure
 ```
 
 ---

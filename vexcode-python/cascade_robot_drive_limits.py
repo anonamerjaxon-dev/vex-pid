@@ -202,9 +202,9 @@ CONTROLLER_LINE_MS = 100
 
 # --- Devices ---
 # Front/back/left/right are as the robot drives forward.
-# This block is the same in both programs here (drive limits and the
-# Override Auton). If a motor turns the wrong way, flip its True/False here
-# AND in the Override Auton.
+# This block is the same in every program here (drive limits, the Override
+# Auton, drive v2 and the amps tool). If a motor turns the wrong way, flip
+# its True/False here AND in the other programs.
 #
 # Every pair on the same shaft has opposite True/False on the two sides,
 # because the two motors face each other across that shaft.
@@ -606,8 +606,8 @@ for part in all_parts:
     part.motor.set_position(0, DEGREES)
 
 # Full strength for every motor. A motor can keep a torque limit from the
-# last program that ran (an older program on the brain may have set one),
-# so it is set back to 100% here.
+# last program that ran (drive v2 limits the claw and the cascade), so it
+# is set back to 100% here.
 for part in all_parts:
     part.motor.set_max_torque(100, PERCENT)
 

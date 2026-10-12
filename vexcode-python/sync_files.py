@@ -8,8 +8,8 @@
 # program stored inside it as one string ("textContent"), so GitHub can't
 # show it nicely - that's why there's also a plain .py copy.
 #
-# Each command does all five programs (match, motor test, drive, drive v2 and
-# the amps measuring tool).
+# Each command does every program in PROGRAMS below (drive limits and the
+# Override Auton).
 # This runs on your computer, not on the robot.
 
 import json
@@ -18,12 +18,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROGRAMS = [
-    ("cascade_robot_auton.py", "Cascade Robot Auton.v5python"),
-    ("cascade_robot_test.py", "Cascade Robot Test.v5python"),
-    ("cascade_robot_drive.py", "Cascade Robot Drive.v5python"),
-    ("cascade_robot_drive_v2.py", "Cascade Robot Drive V2.v5python"),
-    ("cascade_robot_amps.py", "Cascade Robot Amps.v5python"),
     ("cascade_robot_drive_limits.py", "Cascade Robot Drive Limits.v5python"),
+    ("override_auton.py", "Override Auton.v5python"),
 ]
 
 

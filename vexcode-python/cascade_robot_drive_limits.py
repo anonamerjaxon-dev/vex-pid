@@ -39,13 +39,13 @@ print("\033[2J")
 # ------------------------------------------
 #
 # 	Project:      Cascade Robot Drive Limits
-#	Description:  Drive v1 (Cascade Robot Drive) plus a live angle for
+#	Description:  The old drive v1 program plus a live angle for
 #	              every motor on the brain screen, refreshed all the time,
 #	              and an optional soft limit for each mechanism motor. Use
 #	              it to see how far the cascade, the toggle and the claw
 #	              turn, and later to type those numbers in as limits.
 #
-#	Buttons (the same as drive v1, except the toggle and the claw):
+#	Buttons:
 #	Left stick up/down ..... drive forward / backward
 #	Right stick left/right . turn left / right
 #	L1 ......... cascade up          L2 ......... cascade down
@@ -119,9 +119,10 @@ CLAW_CLOSE_BUTTON = "R2"
 CLAW_TURN_DEGREES = 180
 
 # Which way the motor turns to open the claw. If the open button closes
-# it, swap FORWARD and REVERSE here.
-CLAW_OPEN_DIRECTION = FORWARD
-CLAW_CLOSE_DIRECTION = REVERSE
+# it, swap FORWARD and REVERSE here. (Checked on the robot 2026-10-10:
+# FORWARD closes this claw, the same as the 10-08 direction test.)
+CLAW_OPEN_DIRECTION = REVERSE
+CLAW_CLOSE_DIRECTION = FORWARD
 
 # The claw has no current or torque limit: it always has the motor's full
 # strength. The only thing that sets how fast it turns is CLAW_SPEED above
@@ -178,7 +179,7 @@ LIMIT_SLOW_SPEED = 20
 LIMIT_SAFETY_FACTOR = 1.5
 
 # --- Response (less delay between the controller and the robot) ---
-# False = the drive asks for a speed, exactly like drive v1. This is the
+# False = the drive asks for a speed, the way drive v1 did. This is the
 # one that has been driven forward AND backward on the robot.
 # True = the drive is sent a voltage instead, which the motors react to a
 # little sooner. It was the default for one test and the robot would not
@@ -192,7 +193,7 @@ LOOP_MS = 10
 
 # Drawing a screen is slow, and the controller's screen goes over the
 # radio - the same radio that brings the sticks and buttons to the robot.
-# Drive v1 redrew both whenever a number on them changed, which is every
+# The old drive v1 redrew both whenever a number on them changed, every
 # pass while the sticks are moving, and that held up every pass. Now the
 # brain redraws this often, and the controller gets at most ONE changed
 # line this often (never the whole screen at once).
@@ -201,12 +202,12 @@ CONTROLLER_LINE_MS = 100
 
 # --- Devices ---
 # Front/back/left/right are as the robot drives forward.
-# This block is the same in every version of the program (match, test and
-# drive). If the test program shows a motor turning the wrong way, flip its
-# True/False here AND in the other versions.
+# This block is the same in both programs here (drive limits and the
+# Override Auton). If a motor turns the wrong way, flip its True/False here
+# AND in the Override Auton.
 #
-# Every pair on the same shaft has the same True/False on both sides, so
-# both motors of a pair always turn the same way as each other.
+# Every pair on the same shaft has opposite True/False on the two sides,
+# because the two motors face each other across that shaft.
 
 controller_1 = Controller(PRIMARY)
 
@@ -605,8 +606,8 @@ for part in all_parts:
     part.motor.set_position(0, DEGREES)
 
 # Full strength for every motor. A motor can keep a torque limit from the
-# last program that ran (drive v2 limits the claw and the cascade), so it
-# is set back to 100% here.
+# last program that ran (an older program on the brain may have set one),
+# so it is set back to 100% here.
 for part in all_parts:
     part.motor.set_max_torque(100, PERCENT)
 
